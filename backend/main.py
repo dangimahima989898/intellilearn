@@ -1,10 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
+
+from database import engine, Base, SessionLocal
+import models  # noqa: F401 — triggers all model imports so Base.metadata is populated
 
 app = FastAPI(
     title="IntelliLearn API",
@@ -32,7 +36,7 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-# Root routes
+
 @app.get("/", tags=["Health"])
 def root():
     return {
@@ -42,12 +46,20 @@ def root():
         "status": "healthy"
     }
 
+
 @app.get("/health", tags=["Health"])
 def health_check():
+    db_status = "disconnected"
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
     return {
         "status": "ok",
-        "database": "not_connected_yet",
-        "ai": "not_configured_yet"
+        "database": db_status,
     }
 
 # Note: Routers will be added here in Steps 3 onwards
