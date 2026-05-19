@@ -10,15 +10,18 @@ load_dotenv()
 from database import engine, Base, SessionLocal
 import models  # noqa: F401 — triggers all model imports so Base.metadata is populated
 
+# ── Routers ────────────────────────────────────────────────────────────────────
+from routers import auth as auth_router
+
 app = FastAPI(
     title="IntelliLearn API",
     description="AI-Powered Smart Learning Management & Adaptive Assessment System",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
-# CORS — Allow frontend to call backend
+# ── CORS ───────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -31,19 +34,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve uploaded files
+# ── Static files (uploaded notes, etc.) ───────────────────────────────────────
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+# ── Include Routers ────────────────────────────────────────────────────────────
+app.include_router(auth_router.router)
 
+
+# ── Core routes ────────────────────────────────────────────────────────────────
 @app.get("/", tags=["Health"])
 def root():
     return {
         "message": "IntelliLearn API Running",
         "version": "1.0.0",
         "docs": "/docs",
-        "status": "healthy"
+        "status": "healthy",
     }
 
 
@@ -61,5 +68,3 @@ def health_check():
         "status": "ok",
         "database": db_status,
     }
-
-# Note: Routers will be added here in Steps 3 onwards
