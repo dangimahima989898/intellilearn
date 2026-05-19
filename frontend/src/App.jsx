@@ -11,17 +11,20 @@ import NotesPage from "./pages/admin/NotesPage"
 import TimetablePage from "./pages/admin/TimetablePage"
 import EventsPage from "./pages/admin/EventsPage"
 import StudentsPage from "./pages/admin/StudentsPage"
-// Placeholder layout for student — will be replaced in Step 6
-const StudentPlaceholder = () => (
-  <div className="min-h-screen flex items-center justify-center bg-navy-900 text-white font-dm">
-    <div className="text-center card max-w-sm bg-navy-800 border border-navy-700 p-8 rounded-2xl shadow-xl">
-      <h1 className="text-2xl font-outfit font-bold text-brand mb-2">
-        Student Dashboard
-      </h1>
-      <p className="text-navy-600 text-sm">Coming in Step 6</p>
-    </div>
-  </div>
-)
+
+// Student Pages
+import StudentLayout from "./pages/student/StudentLayout"
+import StudentHome from "./pages/student/StudentHome"
+import StudentNotesPage from "./pages/student/NotesPage"
+import StudentTimetablePage from "./pages/student/TimetablePage"
+import StudentEventsPage from "./pages/student/EventsPage"
+import StudentProgressPage from "./pages/student/ProgressPage"
+// Some temporary placeholders for Step 7 features
+const PlaceholderChatbot = () => <div className="p-8 text-center text-white"><h1 className="text-2xl font-bold text-brand mb-4">AI Tutor</h1><p className="text-navy-400">Coming in Step 7</p></div>
+const PlaceholderQuestions = () => <div className="p-8 text-center text-white"><h1 className="text-2xl font-bold text-brand mb-4">Question Generator</h1><p className="text-navy-400">Coming in Step 7</p></div>
+const PlaceholderQuiz = () => <div className="p-8 text-center text-white"><h1 className="text-2xl font-bold text-brand mb-4">Adaptive Quiz</h1><p className="text-navy-400">Coming in Step 7</p></div>
+const PlaceholderChallenge = () => <div className="p-8 text-center text-white"><h1 className="text-2xl font-bold text-brand mb-4">Daily Challenge</h1><p className="text-navy-400">Coming in Step 7</p></div>
+const PlaceholderDoubts = () => <div className="p-8 text-center text-white"><h1 className="text-2xl font-bold text-brand mb-4">Doubt Board</h1><p className="text-navy-400">Coming in Step 7</p></div>
 
 export default function App() {
   return (
@@ -47,13 +50,26 @@ export default function App() {
           <Route path="notifications" element={<div className="p-8 text-white">Notifications (Coming Soon)</div>} />
         </Route>
         <Route
-          path="/student/*"
+          path="/student"
           element={
             <ProtectedRoute requiredRole="student">
-              <StudentPlaceholder />
+              <StudentLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<StudentHome />} />
+          <Route path="notes" element={<StudentNotesPage />} />
+          <Route path="timetable" element={<StudentTimetablePage />} />
+          <Route path="events" element={<StudentEventsPage />} />
+          <Route path="progress" element={<StudentProgressPage />} />
+          
+          {/* Step 7 Features */}
+          <Route path="chatbot" element={<PlaceholderChatbot />} />
+          <Route path="questions" element={<PlaceholderQuestions />} />
+          <Route path="quiz" element={<PlaceholderQuiz />} />
+          <Route path="challenge" element={<PlaceholderChallenge />} />
+          <Route path="doubts" element={<PlaceholderDoubts />} />
+        </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </AuthProvider>
