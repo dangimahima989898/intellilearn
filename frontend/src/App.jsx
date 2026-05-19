@@ -4,18 +4,14 @@ import ProtectedRoute from "./components/ProtectedRoute"
 import LoginPage from "./pages/LoginPage"
 import RegisterPage from "./pages/RegisterPage"
 
-// Placeholder layouts — will be replaced in Steps 5 & 6
-const AdminPlaceholder = () => (
-  <div className="min-h-screen flex items-center justify-center bg-navy-900 text-white font-dm">
-    <div className="text-center card max-w-sm bg-navy-800 border border-navy-700 p-8 rounded-2xl shadow-xl">
-      <h1 className="text-2xl font-outfit font-bold text-brand mb-2">
-        Admin Dashboard
-      </h1>
-      <p className="text-navy-600 text-sm">Coming in Step 5</p>
-    </div>
-  </div>
-)
-
+import AdminLayout from "./pages/admin/AdminLayout"
+import AdminDashboard from "./pages/admin/AdminDashboard"
+import SubjectsPage from "./pages/admin/SubjectsPage"
+import NotesPage from "./pages/admin/NotesPage"
+import TimetablePage from "./pages/admin/TimetablePage"
+import EventsPage from "./pages/admin/EventsPage"
+import StudentsPage from "./pages/admin/StudentsPage"
+// Placeholder layout for student — will be replaced in Step 6
 const StudentPlaceholder = () => (
   <div className="min-h-screen flex items-center justify-center bg-navy-900 text-white font-dm">
     <div className="text-center card max-w-sm bg-navy-800 border border-navy-700 p-8 rounded-2xl shadow-xl">
@@ -35,13 +31,21 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route
-          path="/admin/*"
+          path="/admin"
           element={
             <ProtectedRoute requiredRole="admin">
-              <AdminPlaceholder />
+              <AdminLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<AdminDashboard />} />
+          <Route path="subjects" element={<SubjectsPage />} />
+          <Route path="notes" element={<NotesPage />} />
+          <Route path="timetable" element={<TimetablePage />} />
+          <Route path="events" element={<EventsPage />} />
+          <Route path="students" element={<StudentsPage />} />
+          <Route path="notifications" element={<div className="p-8 text-white">Notifications (Coming Soon)</div>} />
+        </Route>
         <Route
           path="/student/*"
           element={

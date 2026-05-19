@@ -11,7 +11,13 @@ from database import engine, Base, SessionLocal
 import models  # noqa: F401 — triggers all model imports so Base.metadata is populated
 
 # ── Routers ────────────────────────────────────────────────────────────────────
-from routers import auth as auth_router
+from routers import (
+    auth as auth_router,
+    subjects as subjects_router,
+    notes as notes_router,
+    timetable as timetable_router,
+    events as events_router
+)
 
 app = FastAPI(
     title="IntelliLearn API",
@@ -41,6 +47,10 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # ── Include Routers ────────────────────────────────────────────────────────────
 app.include_router(auth_router.router)
+app.include_router(subjects_router.router, prefix="/subjects", tags=["Subjects"])
+app.include_router(notes_router.router, prefix="/notes", tags=["Notes"])
+app.include_router(timetable_router.router, prefix="/timetable", tags=["Timetable"])
+app.include_router(events_router.router, prefix="/events", tags=["Events"])
 
 
 # ── Core routes ────────────────────────────────────────────────────────────────
