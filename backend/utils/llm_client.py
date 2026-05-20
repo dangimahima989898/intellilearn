@@ -26,7 +26,7 @@ async def get_llm_response(
 
             client = Groq(api_key=GROQ_API_KEY)
             response = client.chat.completions.create(
-                model="llama3-70b-8192",
+                model="llama-3.3-70b-versatile",
                 messages=[{"role": "system", "content": system_prompt}] + messages,
                 max_tokens=max_tokens,
                 temperature=0.7,
@@ -54,19 +54,28 @@ async def get_llm_response(
     # ── 3. Google Gemini (final fallback) ─────────────────────────────────────
     if GEMINI_API_KEY:
         try:
-            import google.generativeai as genai
-
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            import httpx
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
             full_prompt = (
                 system_prompt
                 + "\n\n"
                 + "\n".join([f"{m['role']}: {m['content']}" for m in messages])
             )
-            response = model.generate_content(full_prompt)
-            return response.text
+            payload = {
+                "contents": [
+                    {
+                        "parts": [{"text": full_prompt}]
+                    }
+                ]
+            }
+            res = httpx.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30.0)
+            if res.status_code == 200:
+                data = res.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            else:
+                print(f"[LLM] Gemini API error: {res.status_code} - {res.text}")
         except Exception as e:
-            print(f"[LLM] Gemini failed: {e}")
+            print(f"[LLM] Gemini HTTP request failed: {e}")
 
     # ── All providers failed ───────────────────────────────────────────────────
     raise HTTPException(

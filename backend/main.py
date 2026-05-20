@@ -19,6 +19,8 @@ from routers import (
     events as events_router,
     analytics as analytics_router,
     chatbot as chatbot_router,
+    questions as questions_router,
+    adaptive_quiz as adaptive_quiz_router,
 )
 
 app = FastAPI(
@@ -55,6 +57,8 @@ app.include_router(timetable_router.router, prefix="/timetable", tags=["Timetabl
 app.include_router(events_router.router, prefix="/events", tags=["Events"])
 app.include_router(analytics_router.router, prefix="/analytics", tags=["Analytics"])
 app.include_router(chatbot_router.router)  # prefix defined inside the router
+app.include_router(questions_router.router)  # prefix defined inside the router
+app.include_router(adaptive_quiz_router.router)
 
 
 # ── Core routes ────────────────────────────────────────────────────────────────

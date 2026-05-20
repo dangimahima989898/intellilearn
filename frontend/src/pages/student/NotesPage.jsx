@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Download, Eye, SearchX } from 'lucide-react'
+import { FileText, Download, Eye, SearchX, Sparkles, X } from 'lucide-react'
 import studentService from '../../services/studentService'
 import toast from 'react-hot-toast'
 
@@ -8,6 +8,8 @@ export default function StudentNotesPage() {
   const [subjects, setSubjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('all')
+  const [summarizingId, setSummarizingId] = useState(null)
+  const [activeSummaryNote, setActiveSummaryNote] = useState(null)
 
   const fetchData = async () => {
     try {
@@ -47,6 +49,70 @@ export default function StudentNotesPage() {
     } catch (error) {
       toast.error('Download failed')
     }
+  }
+
+  const handleGenerateSummary = async (id) => {
+    setSummarizingId(id)
+    try {
+      const data = await studentService.summarizeNote(id)
+      toast.success('Summary generated successfully! 🤖')
+      
+      // Update local notes state
+      setNotes(prev => prev.map(note => note.id === id ? { ...note, summary: data.summary } : note))
+      
+      // Find updated note and set it as active summary for display
+      const currentNote = notes.find(n => n.id === id)
+      if (currentNote) {
+        setActiveSummaryNote({ ...currentNote, summary: data.summary })
+      } else {
+        // Fallback fetch if not found immediately
+        fetchData()
+      }
+    } catch (error) {
+      toast.error('Failed to generate summary.')
+    } finally {
+      setSummarizingId(null)
+    }
+  }
+
+  // Parse and render basic markdown layout safely in React
+  const renderFormattedSummary = (text) => {
+    if (!text) return null
+    const lines = text.split('\n')
+    return lines.map((line, idx) => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('##')) {
+        return (
+          <h4 key={idx} className="text-base font-bold text-white mt-4 mb-2 first:mt-0 font-outfit border-b border-navy-700 pb-1">
+            {trimmed.replace(/^##\s*/, '')}
+          </h4>
+        )
+      }
+      if (trimmed.startsWith('-') || trimmed.startsWith('*')) {
+        return (
+          <li key={idx} className="text-navy-300 text-sm list-disc list-inside ml-2 mb-1.5 leading-relaxed">
+            {trimmed.replace(/^[-*]\s*/, '')}
+          </li>
+        )
+      }
+      const matchOrdered = trimmed.match(/^(\d+)\.\s*(.*)/)
+      if (matchOrdered) {
+        return (
+          <div key={idx} className="text-navy-300 text-sm ml-2 mb-2 leading-relaxed flex items-start gap-2">
+            <span className="text-brand font-bold shrink-0">{matchOrdered[1]}.</span>
+            <span>{matchOrdered[2]}</span>
+          </div>
+        )
+      }
+      if (trimmed === '') {
+        return <div key={idx} className="h-2" />
+      }
+      return (
+        <p key={idx} className="text-navy-300 text-sm leading-relaxed mb-2">
+          {trimmed}
+        </p>
+      )
+    })
   }
 
   const getBadgeColor = (type) => {
@@ -117,16 +183,80 @@ export default function StudentNotesPage() {
                 >
                   <Download className="w-4 h-4" /> Download
                 </button>
-                <button 
-                  onClick={() => toast('AI Summary Generation coming in Step 8!', { icon: '🤖' })}
-                  className="p-2 rounded-xl bg-navy-900 hover:bg-navy-700 text-navy-400 hover:text-white transition-colors border border-navy-700"
-                  title="View AI Summary"
-                >
-                  <Eye className="w-5 h-5" />
-                </button>
+                {note.summary ? (
+                  <button 
+                    onClick={() => setActiveSummaryNote(note)}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-brand/10 hover:bg-brand hover:text-white text-brand transition-colors text-sm font-semibold border border-brand/20 hover:border-brand"
+                    title="View AI Summary"
+                  >
+                    <Eye className="w-4 h-4" /> View Summary
+                  </button>
+                ) : (
+                  <button 
+                    disabled={summarizingId === note.id}
+                    onClick={() => handleGenerateSummary(note.id)}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-600 hover:text-white text-emerald-400 border border-emerald-500/20 hover:border-emerald-650 transition-colors text-sm font-semibold disabled:opacity-50"
+                    title="Generate AI Summary"
+                  >
+                    {summarizingId === note.id ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Summarizing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" /> AI Summary
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── VIEW SUMMARY MODAL ── */}
+      {activeSummaryNote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-navy-800 border border-navy-700 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-scale-up">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-navy-700 bg-navy-900/50">
+              <div className="flex items-center gap-2 text-brand">
+                <Sparkles className="w-5 h-5" />
+                <h3 className="font-outfit font-bold text-white text-lg line-clamp-1">AI Note Summary</h3>
+              </div>
+              <button 
+                onClick={() => setActiveSummaryNote(null)}
+                className="p-1 rounded-lg hover:bg-navy-800 text-navy-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Modal Content */}
+            <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4 custom-scrollbar">
+              <div>
+                <h4 className="text-white font-bold text-base leading-tight mb-1">{activeSummaryNote.title}</h4>
+                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-navy-900 text-brand border border-brand/20">
+                  {activeSummaryNote.subject_name}
+                </span>
+              </div>
+              <div className="bg-navy-900/40 border border-navy-750 p-4 rounded-2xl space-y-2">
+                {renderFormattedSummary(activeSummaryNote.summary)}
+              </div>
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="p-4 bg-navy-900/30 border-t border-navy-750 flex justify-end">
+              <button 
+                onClick={() => setActiveSummaryNote(null)}
+                className="px-5 py-2 rounded-xl bg-brand text-white hover:opacity-90 transition-opacity text-sm font-bold"
+              >
+                Close Summary
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

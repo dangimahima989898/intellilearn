@@ -33,6 +33,12 @@ const studentService = {
     const response = await api.get(`/notes/download/${id}`, { responseType: 'blob' })
     return response.data
   },
+
+  summarizeNote: async (id) => {
+    const response = await api.post(`/notes/${id}/summarize`)
+    return response.data
+  },
+
   
   // Schedule
   getTimetable: async () => {
