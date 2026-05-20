@@ -22,10 +22,11 @@ import StudentProgressPage from "./pages/student/ProgressPage"
 import ChatbotPage from "./pages/student/ChatbotPage"
 import QuestionGeneratorPage from "./pages/student/QuestionGeneratorPage"
 import AdaptiveQuizPage from "./pages/student/AdaptiveQuizPage"
+import DailyChallengePage from "./pages/student/DailyChallengePage"
+import DoubtBoardPage from "./pages/student/DoubtBoardPage"
+import DoubtDetailPage from "./pages/student/DoubtDetailPage"
 
-// Remaining Step 7 placeholders (Quiz, Challenge, Doubts)
-const PlaceholderChallenge = () => <div className="p-8 text-center text-white"><h1 className="text-2xl font-bold text-brand mb-4">Daily Challenge</h1><p className="text-navy-400">Coming in Step 8</p></div>
-const PlaceholderDoubts = () => <div className="p-8 text-center text-white"><h1 className="text-2xl font-bold text-brand mb-4">Doubt Board</h1><p className="text-navy-400">Coming in Step 8</p></div>
+// Remaining Step 7 placeholders (Doubts)
 
 export default function App() {
   return (
@@ -68,8 +69,9 @@ export default function App() {
           <Route path="chatbot" element={<ChatbotPage />} />
           <Route path="questions" element={<QuestionGeneratorPage />} />
           <Route path="quiz" element={<AdaptiveQuizPage />} />
-          <Route path="challenge" element={<PlaceholderChallenge />} />
-          <Route path="doubts" element={<PlaceholderDoubts />} />
+          <Route path="challenge" element={<DailyChallengePage />} />
+          <Route path="doubts" element={<DoubtBoardPage />} />
+          <Route path="doubts/:id" element={<DoubtDetailPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

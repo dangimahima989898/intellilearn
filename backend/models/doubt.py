@@ -14,6 +14,7 @@ class Doubt(Base):
     subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False)
     question_text = Column(Text, nullable=False)
     is_resolved = Column(Boolean, default=False)
+    accepted_answer_id = Column(UUID(as_uuid=True), nullable=True)
     vote_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

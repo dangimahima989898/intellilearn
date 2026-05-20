@@ -21,6 +21,8 @@ from routers import (
     chatbot as chatbot_router,
     questions as questions_router,
     adaptive_quiz as adaptive_quiz_router,
+    daily_challenge as daily_challenge_router,
+    doubts as doubts_router,
 )
 
 app = FastAPI(
@@ -59,6 +61,8 @@ app.include_router(analytics_router.router, prefix="/analytics", tags=["Analytic
 app.include_router(chatbot_router.router)  # prefix defined inside the router
 app.include_router(questions_router.router)  # prefix defined inside the router
 app.include_router(adaptive_quiz_router.router)
+app.include_router(daily_challenge_router.router)
+app.include_router(doubts_router.router)
 
 
 # ── Core routes ────────────────────────────────────────────────────────────────
