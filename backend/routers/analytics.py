@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from database import get_db
 from models.user import User
-from models.quiz import QuizAttempt
-from models.challenge import ChallengeSubmission
+from models.quiz_attempt import QuizAttempt
+from models.challenge_submission import ChallengeSubmission
 from models.subject import Subject
 from utils.dependencies import get_current_user, require_student
 import uuid
