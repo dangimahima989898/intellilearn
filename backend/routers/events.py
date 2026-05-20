@@ -7,6 +7,7 @@ from schemas.event import EventCreate, EventOut
 from utils.dependencies import get_current_user, require_admin
 import uuid
 from datetime import datetime, date
+from utils.firebase import send_to_all_students
 
 router = APIRouter()
 
@@ -27,6 +28,13 @@ def create_event(event_data: EventCreate, db: Session = Depends(get_db), current
     
     # Simulate Firebase push notification
     print(f"🔔 [Push Notification Simulator] Sent to all students: New Event '{new_event.title}' scheduled for {new_event.event_date}")
+    
+    send_to_all_students(
+        db=db,
+        title=f"📅 New Event: {new_event.title}",
+        body=f"{new_event.event_type.capitalize()} scheduled for {new_event.event_date.strftime('%B %d, %Y')}",
+        data={"event_id": str(new_event.id), "type": "event"}
+    )
     
     days_until = (new_event.event_date.date() - date.today()).days
     

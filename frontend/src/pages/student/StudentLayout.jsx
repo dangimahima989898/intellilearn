@@ -1,6 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import axios from 'axios'
+import toast from 'react-hot-toast'
+import { requestNotificationPermission, onForegroundMessage } from '../../config/firebase'
+import NotificationBell from '../../components/NotificationBell'
 import {
   LayoutDashboard,
   BookOpen,
@@ -23,6 +27,34 @@ export default function StudentLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  useEffect(() => {
+    const setupNotifications = async () => {
+      const token = await requestNotificationPermission();
+      if (token) {
+        try {
+          await axios.put(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/auth/update-fcm-token`, 
+            { fcm_token: token }, 
+            { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+          );
+        } catch(e) {
+          console.warn("Failed to update FCM token", e);
+        }
+      }
+    };
+    setupNotifications();
+
+    const unsubscribe = onForegroundMessage((payload) => {
+      toast.success(`${payload.notification.title}\n${payload.notification.body}`, {
+        duration: 5000,
+        position: 'top-right',
+      });
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   const handleLogout = () => {
     logout()
@@ -142,10 +174,7 @@ export default function StudentLayout() {
               <span className="text-lg">🔥</span>
               <span className="text-orange-500 font-bold text-sm">{user?.streak_count || 0} Day Streak</span>
             </div>
-            <button className="relative p-2 text-navy-400 hover:text-white hover:bg-navy-800 rounded-full transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-navy-900"></span>
-            </button>
+            <NotificationBell />
           </div>
         </div>
 

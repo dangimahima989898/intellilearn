@@ -13,6 +13,7 @@ import uuid
 import os
 import shutil
 from datetime import datetime
+from utils.firebase import send_to_all_students
 
 router = APIRouter()
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
@@ -65,6 +66,13 @@ async def upload_note(
     db.add(new_note)
     db.commit()
     db.refresh(new_note)
+    
+    send_to_all_students(
+        db=db,
+        title="📚 New Study Material Available",
+        body=f"New notes for {subject.name}: {new_note.title}",
+        data={"note_id": str(new_note.id), "type": "note"}
+    )
     
     return {
         **new_note.__dict__,
