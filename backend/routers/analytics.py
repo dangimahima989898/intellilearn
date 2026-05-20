@@ -6,7 +6,11 @@ from models.user import User
 from models.quiz_attempt import QuizAttempt
 from models.challenge_submission import ChallengeSubmission
 from models.subject import Subject
-from utils.dependencies import get_current_user, require_student
+from models.note import Note
+from models.question import Question
+from models.doubt import Doubt
+from models.chat_log import ChatLog
+from utils.dependencies import get_current_user, require_student, require_admin
 import uuid
 
 router = APIRouter()
@@ -117,3 +121,41 @@ def get_leaderboard(db: Session = Depends(get_db), current_user = Depends(get_cu
             rank += 1
             
     return result
+
+@router.get("/admin/stats")
+def get_admin_stats(db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    total_students = db.query(func.count(User.id)).filter(User.role == "student").scalar() or 0
+    total_admins = db.query(func.count(User.id)).filter(User.role == "admin").scalar() or 0
+    total_notes = db.query(func.count(Note.id)).scalar() or 0
+    total_questions = db.query(func.count(Question.id)).scalar() or 0
+    total_quiz_attempts = db.query(func.count(QuizAttempt.id)).scalar() or 0
+    total_doubts = db.query(func.count(Doubt.id)).scalar() or 0
+    total_doubts_resolved = db.query(func.count(Doubt.id)).filter(Doubt.is_resolved == True).scalar() or 0
+    total_chat_messages = db.query(func.count(ChatLog.id)).scalar() or 0
+    total_challenges = db.query(func.count(ChallengeSubmission.id)).scalar() or 0
+    
+    subjects_data = []
+    subjects = db.query(Subject).all()
+    for sub in subjects:
+        nc = db.query(func.count(Note.id)).filter(Note.subject_id == sub.id).scalar() or 0
+        qc = db.query(func.count(Question.id)).filter(Question.subject_id == sub.id).scalar() or 0
+        q_att = db.query(func.count(QuizAttempt.id)).filter(QuizAttempt.subject_id == sub.id).scalar() or 0
+        subjects_data.append({
+            "name": sub.name,
+            "notes_count": nc,
+            "questions_count": qc,
+            "quiz_attempts_count": q_att
+        })
+        
+    return {
+        "total_students": total_students,
+        "total_admins": total_admins,
+        "total_notes": total_notes,
+        "total_questions_generated": total_questions,
+        "total_quiz_attempts": total_quiz_attempts,
+        "total_doubts": total_doubts,
+        "total_doubts_resolved": total_doubts_resolved,
+        "total_chat_messages": total_chat_messages,
+        "total_challenge_submissions": total_challenges,
+        "subjects": subjects_data
+    }

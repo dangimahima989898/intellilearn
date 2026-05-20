@@ -1,17 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 import re
+from utils.sanitize import sanitize_text
 
 from database import get_db
 from models.chat_log import ChatLog
-from models.rate_limit import RateLimit
 from models.user import User
 from utils.dependencies import require_student, get_current_user
 from utils.llm_client import get_llm_response, get_provider_status
+from utils.rate_limiter import check_rate_limit
 
 router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
 
@@ -101,6 +102,10 @@ class ChatRequest(BaseModel):
     language: str = "english"
     conversation_history: list[MessageItem] = Field(default=[], max_length=10)
 
+    @field_validator('message')
+    @classmethod
+    def sanitize_field(cls, v: str) -> str:
+        return sanitize_text(v)
 
 class ChatResponse(BaseModel):
     response: str
@@ -111,42 +116,6 @@ class ChatResponse(BaseModel):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def check_rate_limit(db: Session, student_id, endpoint: str) -> None:
-    """Raise HTTP 429 if the student has exceeded RATE_LIMIT_MAX in the last hour."""
-    window_start = datetime.now(timezone.utc) - timedelta(minutes=RATE_LIMIT_WINDOW)
-
-    record = (
-        db.query(RateLimit)
-        .filter(
-            RateLimit.student_id == student_id,
-            RateLimit.endpoint == endpoint,
-            RateLimit.window_start >= window_start,
-        )
-        .first()
-    )
-
-    if record is None:
-        # First request in this window
-        record = RateLimit(
-            student_id=student_id,
-            endpoint=endpoint,
-            count=1,
-            window_start=datetime.now(timezone.utc),
-        )
-        db.add(record)
-        db.commit()
-        return
-
-    if record.count >= RATE_LIMIT_MAX:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded. You can send {RATE_LIMIT_MAX} messages per hour. Please try again later.",
-        )
-
-    record.count += 1
-    db.commit()
-
-
 def extract_suggested_topic(response_text: str) -> str:
     """Parse the 'Suggested next topic:' line from the AI response."""
     match = re.search(r"📚 Suggested next topic:\s*(.+)", response_text)
@@ -165,8 +134,8 @@ async def chat(
     db: Session = Depends(get_db),
 ):
     """Send a message to the AI tutor and get a response."""
-    # 1. Rate limiting
-    check_rate_limit(db, current_user.id, "chatbot_chat")
+    # 1. Rate limiting (20 per hour)
+    check_rate_limit(str(current_user.id), "chatbot_chat", max_requests=20, window_seconds=3600)
 
     # 2. Build dynamic system prompt with subject + language context
     subject_label = body.subject.upper()

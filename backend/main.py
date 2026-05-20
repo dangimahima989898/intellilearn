@@ -4,6 +4,12 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from dotenv import load_dotenv
 import os
+import logging
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -41,11 +47,22 @@ app.add_middleware(
         os.getenv("FRONTEND_URL", "http://localhost:5173"),
         "http://localhost:5173",
         "http://localhost:3000",
+        "https://your-vercel-app.vercel.app" # placeholder for actual
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc):
+    return JSONResponse(status_code=404, content={"error": "Resource not found", "path": str(request.url)})
+
+@app.exception_handler(500)
+async def server_error_handler(request: Request, exc: Exception):
+    import traceback
+    logger.error(f"Internal error: {traceback.format_exc()}")
+    return JSONResponse(status_code=500, content={"error": "Internal server error. Please try again."})
 
 # ── Static files (uploaded notes, etc.) ───────────────────────────────────────
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")

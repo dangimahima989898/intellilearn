@@ -1,11 +1,17 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
+from utils.sanitize import sanitize_text
 
 class DoubtCreate(BaseModel):
     subject_id: UUID
     question_text: str
+
+    @field_validator('question_text')
+    @classmethod
+    def sanitize_field(cls, v: str) -> str:
+        return sanitize_text(v)
 
 class DoubtOut(BaseModel):
     id: UUID
@@ -26,6 +32,11 @@ class DoubtOut(BaseModel):
 
 class DoubtAnswerCreate(BaseModel):
     answer_text: str
+
+    @field_validator('answer_text')
+    @classmethod
+    def sanitize_field(cls, v: str) -> str:
+        return sanitize_text(v)
 
 class DoubtAnswerOut(BaseModel):
     id: UUID

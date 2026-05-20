@@ -12,6 +12,7 @@ from models.question import Question
 from models.subject import Subject
 from utils.dependencies import get_current_user, require_student, require_admin
 from utils.llm_client import get_llm_response
+from utils.rate_limiter import check_rate_limit
 from schemas.question import QuestionOut, GenerateRequest, GenerateResponse
 
 router = APIRouter(prefix="/questions", tags=["Questions"])
@@ -77,6 +78,9 @@ async def generate_questions(
     db: Session = Depends(get_db),
     current_user = Depends(require_student)
 ):
+    # 0. Rate check (50 per hour)
+    check_rate_limit(str(current_user.id), "question_gen", max_requests=50, window_seconds=3600)
+    
     # Validate difficulty
     diff_lower = req.difficulty.lower()
     if diff_lower not in ["easy", "medium", "hard"]:
