@@ -13,3 +13,4 @@ from .timetable import Timetable
 from .event import Event
 from .notification import Notification
 from .chat_log import ChatLog
+from .rate_limit import RateLimit
