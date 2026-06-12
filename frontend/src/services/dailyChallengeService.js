@@ -1,38 +1,26 @@
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
-};
+import api from './api';
 
 const dailyChallengeService = {
   getTodayChallenge: async () => {
-    const response = await axios.get(`${API_URL}/daily-challenge/today`, getAuthHeaders());
+    const response = await api.get('/daily-challenge/today');
     return response.data;
   },
 
   submitChallenge: async (challengeId, selectedAnswer) => {
-    const response = await axios.post(
-      `${API_URL}/daily-challenge/submit`,
-      { challenge_id: challengeId, selected_answer: selectedAnswer },
-      getAuthHeaders()
-    );
+    const response = await api.post('/daily-challenge/submit', {
+      challenge_id: challengeId,
+      selected_answer: selectedAnswer,
+    });
     return response.data;
   },
 
   getLeaderboard: async () => {
-    const response = await axios.get(`${API_URL}/daily-challenge/leaderboard`, getAuthHeaders());
+    const response = await api.get('/daily-challenge/leaderboard');
     return response.data;
   },
 
   getMyHistory: async () => {
-    const response = await axios.get(`${API_URL}/daily-challenge/my-history`, getAuthHeaders());
+    const response = await api.get('/daily-challenge/my-history');
     return response.data;
   },
 };

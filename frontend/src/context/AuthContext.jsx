@@ -21,8 +21,11 @@ export function AuthProvider({ children }) {
         // Validate token with backend
         try {
           const freshUser = await authService.getMe()
-          setUser(freshUser)
-          localStorage.setItem("intellilearn_user", JSON.stringify(freshUser))
+          setUser(prev => {
+            const merged = { ...prev, ...freshUser }
+            localStorage.setItem("intellilearn_user", JSON.stringify(merged))
+            return merged
+          })
         } catch {
           // Token invalid — clear everything
           localStorage.removeItem("intellilearn_token")
@@ -39,32 +42,53 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const data = await authService.login(email, password)
     localStorage.setItem("intellilearn_token", data.access_token)
-    localStorage.setItem(
-      "intellilearn_user",
-      JSON.stringify({
-        id: data.user_id,
-        name: data.name,
-        email: data.email,
-        role: data.role,
-      })
-    )
-    setToken(data.access_token)
-    setUser({
+    
+    const userObj = {
       id: data.user_id,
       name: data.name,
       email: data.email,
       role: data.role,
-    })
+      course_id: data.course_id || null,
+      course_code: data.course_code || null,
+      course_name: data.course_name || null,
+      current_semester: data.current_semester || null,
+      enrollment_no: data.enrollment_no || null,
+      section: data.section || null,
+      must_change_password: data.must_change_password || false,
+    }
+    
+    localStorage.setItem("intellilearn_user", JSON.stringify(userObj))
+    setToken(data.access_token)
+    setUser(userObj)
     return data
+
   }, [])
 
   const register = useCallback(
-    async (name, email, password, role = "student") => {
-      const data = await authService.register(name, email, password, role)
+    async (name, email, password, role = "student", extra = {}) => {
+      const payload = {
+        course_id: extra.courseId || null,
+        current_semester: extra.currentSemester || 1,
+        enrollment_no: extra.enrollmentNo || null,
+        roll_number: extra.rollNumber || null,
+        section: extra.section || null,
+        phone: extra.phone || null,
+        admission_year: extra.admissionYear || null,
+      }
+      const data = await authService.register(name, email, password, role, payload)
       return data
     },
     []
   )
+
+  const completePasswordChange = useCallback(() => {
+    setUser(prev => {
+      if (!prev) return null;
+      const updated = { ...prev, must_change_password: false };
+      localStorage.setItem("intellilearn_user", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
 
   const logout = useCallback(() => {
     authService.logout()
@@ -79,10 +103,14 @@ export function AuthProvider({ children }) {
     loading,
     login,
     register,
+    completePasswordChange,
     logout,
     isAuthenticated: !!token && !!user,
+
     isAdmin: user?.role === "admin",
     isStudent: user?.role === "student",
+    semesterLabel: user?.current_semester ? `Semester ${user.current_semester}` : "",
+    courseLabel: user?.course_code && user?.current_semester ? `${user.course_code} Semester ${user.current_semester}` : ""
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -49,12 +49,10 @@ def send_push_notification(fcm_token: str, title: str, body: str, data: dict = N
         return False
 
 def send_to_all_students(db: Session, title: str, body: str, data: dict = None) -> dict:
-    """Send push notification to all active students with FCM tokens. Returns stats."""
+    """Send push notification to all active students. Saves to DB for all, sends push to those with FCM tokens. Returns stats."""
     students = db.query(User).filter(
         User.role == "student",
-        User.is_active == True,
-        User.fcm_token != None,
-        User.fcm_token != ""
+        User.is_active == True
     ).all()
 
     success_count = 0
@@ -62,7 +60,7 @@ def send_to_all_students(db: Session, title: str, body: str, data: dict = None) 
     saved_count = 0
 
     for student in students:
-        # Save notification to DB regardless of push success
+        # Save notification to DB for ALL active students
         notif = Notification(
             id=uuid.uuid4(),
             user_id=student.id,
@@ -72,11 +70,12 @@ def send_to_all_students(db: Session, title: str, body: str, data: dict = None) 
         db.add(notif)
         saved_count += 1
 
-        # Send push
-        if send_push_notification(student.fcm_token, title, body, data):
-            success_count += 1
-        else:
-            fail_count += 1
+        # Send push if student has FCM token
+        if student.fcm_token:
+            if send_push_notification(student.fcm_token, title, body, data):
+                success_count += 1
+            else:
+                fail_count += 1
 
     db.commit()
     return {"success": success_count, "failed": fail_count, "saved_to_db": saved_count}

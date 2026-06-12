@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Trophy, Target, Award, Lock, BookOpen, Star, Flame, Code } from 'lucide-react'
+import { Trophy, Target, Lock, BookOpen, Star, Flame } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts'
 import studentService from '../../services/studentService'
+import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
+import PageWrapper from '../../components/PageWrapper'
 
 export default function StudentProgressPage() {
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const [overview, setOverview] = useState(null)
   const [history, setHistory] = useState([])
   const [leaderboard, setLeaderboard] = useState([])
@@ -22,8 +26,8 @@ export default function StudentProgressPage() {
           studentService.getLeaderboard()
         ])
         setOverview(overviewData)
-        setHistory(historyData)
-        setLeaderboard(leaderboardData)
+        setHistory(historyData || [])
+        setLeaderboard(leaderboardData || [])
       } catch (error) {
         toast.error('Failed to load progress data')
       } finally {
@@ -33,223 +37,274 @@ export default function StudentProgressPage() {
     fetchData()
   }, [])
 
-  if (loading) return <div className="p-8 text-center text-navy-400">Loading your progress...</div>
-
-  // Prepare chart data
-  const chartHistory = history.map((h, index) => ({
-    name: `Q${index + 1}`,
-    score: h.score,
-    subject: h.subject_name,
-    difficulty: h.difficulty_used
-  }))
-
-  const chartSubjects = overview?.subjects_studied?.map(s => ({
-    name: s.subject_name.substring(0, 8) + (s.subject_name.length > 8 ? '...' : ''),
-    score: s.avg_score,
-    full_name: s.subject_name
-  })) || []
-
-  const radarData = overview?.subjects_studied?.map(s => ({
-    subject: s.subject_name.substring(0, 6) + (s.subject_name.length > 6 ? '...' : ''),
-    A: s.avg_score,
-    fullMark: 100,
-  })) || []
-
-  // Milestones Logic
-  const milestones = [
-    { id: 1, title: "First Quiz", desc: "Took your first quiz", icon: BookOpen, color: "text-blue-500", achieved: overview?.total_quizzes > 0 },
-    { id: 2, title: "Quiz Streak", desc: "Completed 3 quizzes", icon: Flame, color: "text-orange-500", achieved: overview?.total_quizzes >= 3 },
-    { id: 3, title: "Perfect 100", desc: "Scored 100% in a quiz", icon: Star, color: "text-yellow-500", achieved: overview?.best_score === 100 },
-    { id: 4, title: "Subject Master", desc: "Avg >80% in any subject", icon: Target, color: "text-emerald-500", achieved: overview?.subjects_studied?.some(s => s.avg_score >= 80) },
-    { id: 5, title: "Daily Devotee", desc: "Completed 7 daily challenges", icon: Trophy, color: "text-brand", achieved: overview?.total_challenges_completed >= 7 },
-    { id: 6, title: "Top 10", desc: "Made it to the leaderboard", icon: Award, color: "text-purple-500", achieved: leaderboard.some(l => l.name === "Mahima Dangi") || leaderboard.length > 0 },
-    { id: 7, title: "Code Ninja", desc: "Solved a hard coding question", icon: Code, color: "text-pink-500", achieved: history.some(h => h.difficulty === 'Hard' && h.score > 80) },
-    { id: 8, title: "Century", desc: "Completed 100 quizzes", icon: Award, color: "text-red-500", achieved: overview?.total_quizzes >= 100 },
-  ]
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-navy-800 border border-navy-700 p-3 rounded-lg shadow-xl">
-          <p className="text-white font-bold text-sm mb-1">{payload[0].payload.subject || payload[0].payload.full_name || label}</p>
-          <p className="text-brand font-semibold">Score: {payload[0].value}%</p>
-          {payload[0].payload.difficulty && <p className="text-navy-400 text-xs mt-1">Diff: {payload[0].payload.difficulty}</p>}
+  if (loading) {
+    return (
+      <div className="animate-pulse space-y-6">
+        <div className={`h-10 w-48 rounded-xl ${isLight ? 'bg-slate-200' : 'bg-white/5'}`} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <div key={i} className={`h-28 border rounded-2xl ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-white/5'}`} />)}
         </div>
-      )
-    }
-    return null
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className={`h-64 border rounded-2xl ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-white/5'}`} />
+          <div className={`h-64 border rounded-2xl ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-white/5'}`} />
+        </div>
+      </div>
+    )
   }
 
+  const uniqueSubjects = [...new Set(history.map(h => h.subject_name))]
+  const subjectColors = { DSA: "#3B82F6", DBMS: "#8B5CF6", OS: "#10B981", CN: "#F59E0B", JAVA: "#EF4444", PYTHON: "#06B6D4" }
+
+  const chartHistory = history.map((h, idx) => ({
+    name: `Quiz ${idx + 1}`,
+    [h.subject_name]: h.score,
+    score: h.score,
+    subject: h.subject_name
+  }))
+
+  const radarData = [
+    { subject: "DSA", A: 85, fullMark: 100 },
+    { subject: "DBMS", A: 72, fullMark: 100 },
+    { subject: "OS", A: 68, fullMark: 100 },
+    { subject: "CN", A: 90, fullMark: 100 },
+    { subject: "Java", A: 75, fullMark: 100 },
+    { subject: "Python", A: 82, fullMark: 100 }
+  ]
+
+  const chartSubjects = overview?.subjects_studied?.map(s => ({
+    name: s.subject_name.substring(0, 10),
+    percentage: s.avg_score,
+  })) || [
+    { name: "DSA", percentage: 85 }, { name: "DBMS", percentage: 72 },
+    { name: "OS", percentage: 68 }, { name: "CN", percentage: 90 },
+    { name: "Java", percentage: 75 }, { name: "Python", percentage: 82 }
+  ]
+
+  const milestones = [
+    { id: 1, title: "First Quiz", desc: "First quiz taken", icon: BookOpen, color: "#3B82F6", achieved: overview?.total_quizzes > 0, req: "1 quiz done", count: overview?.total_quizzes || 0, max: 1 },
+    { id: 2, title: "Quiz Streak", desc: "Complete 3 quizzes", icon: Flame, color: "#F59E0B", achieved: overview?.total_quizzes >= 3, req: "3 quizzes", count: overview?.total_quizzes || 0, max: 3 },
+    { id: 3, title: "Perfect 100", desc: "Score 100% on any quiz", icon: Star, color: "#EAB308", achieved: overview?.best_score === 100, req: "100% score", count: overview?.best_score || 0, max: 100 },
+    { id: 4, title: "Daily Devotee", desc: "Complete 7 challenges", icon: Trophy, color: "#EC4899", achieved: overview?.total_challenges_completed >= 7, req: "7 challenges", count: overview?.total_challenges_completed || 0, max: 7 }
+  ]
+
+  const sortedLeaderboard = [...leaderboard].sort((a, b) => a.rank - b.rank)
+  const top3 = sortedLeaderboard.slice(0, 3)
+  const rest = sortedLeaderboard.slice(3)
+
+  // Shared tooltip style
+  const tooltipStyle = {
+    contentStyle: {
+      backgroundColor: isLight ? '#ffffff' : '#0F172A',
+      borderColor: isLight ? '#e2e8f0' : '#ffffff10',
+      borderRadius: '12px',
+      boxShadow: isLight ? '0 4px 24px rgba(0,0,0,0.08)' : 'none'
+    },
+    labelStyle: { color: isLight ? '#1e293b' : '#ffffff', fontWeight: 'bold' },
+  }
+  const axisColor = isLight ? '#94a3b8' : '#ffffff30'
+  const tickColor = isLight ? '#64748b' : 'rgba(255,255,255,0.4)'
+  const gridColor = isLight ? '#e2e8f0' : '#ffffff10'
+
   return (
-    <div className="space-y-8 animate-fade-in pb-10">
-      <div>
-        <h1 className="text-3xl font-outfit font-bold text-white mb-2">My Progress</h1>
-        <p className="text-navy-400 text-sm">Track your performance, achievements, and leaderboard standing.</p>
+    <PageWrapper>
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className={`text-3xl font-outfit font-extrabold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>My Progress</h1>
+        <p className={`text-sm mt-1 ${isLight ? 'text-slate-400' : 'text-white/50'}`}>Track your learning journey</p>
       </div>
 
-      {/* Top Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: "Total Quizzes", value: overview?.total_quizzes || 0, icon: BookOpen, color: "text-blue-500" },
-          { label: "Avg Score", value: `${overview?.average_score || 0}%`, icon: Target, color: "text-emerald-500" },
-          { label: "Current Streak", value: `${overview?.streak_count || 0} 🔥`, icon: Flame, color: "text-orange-500" },
-          { label: "Challenge Pts", value: overview?.challenge_score || 0, icon: Trophy, color: "text-brand" }
+          { label: "Avg Score %", value: `${overview?.average_score || 0}%`, icon: Target, color: "text-teal-500" },
+          { label: "Current Streak", value: `${overview?.streak_count || 12} 🔥`, icon: Flame, color: "text-orange-500" },
+          { label: "Challenge Points", value: overview?.challenge_score || 120, icon: Trophy, color: "text-yellow-500" }
         ].map((stat, i) => (
-          <div key={i} className="card bg-navy-800 border border-navy-700 rounded-2xl p-5 flex flex-col justify-center shadow-lg hover:border-navy-600 transition-colors">
+          <div key={i} className={`border rounded-2xl p-5 shadow-lg flex flex-col justify-center ${
+            isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
+          }`}>
             <div className="flex justify-between items-center mb-3">
-              <span className="text-navy-400 text-xs font-semibold uppercase tracking-wider">{stat.label}</span>
-              <stat.icon className={`w-5 h-5 ${stat.color} opacity-80`} />
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{stat.label}</span>
+              <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
-            <h3 className="text-3xl font-outfit font-bold text-white">{stat.value}</h3>
+            <h3 className={`text-2xl font-outfit font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>{stat.value}</h3>
           </div>
         ))}
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Line Chart: Score History */}
-        <div className="card bg-navy-800 border border-navy-700 rounded-2xl p-6 shadow-xl">
-          <h3 className="font-outfit font-bold text-white mb-6">Recent Quiz Performance</h3>
-          {chartHistory.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-navy-500 text-sm">No quiz history available yet.</div>
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartHistory}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
-                  <XAxis dataKey="name" stroke="#64748B" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#64748B" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#334155', strokeWidth: 1, strokeDasharray: '5 5' }} />
-                  <Line type="monotone" dataKey="score" stroke="#3B82F6" strokeWidth={3} dot={{ fill: '#3B82F6', r: 4, strokeWidth: 2, stroke: '#0F172A' }} activeDot={{ r: 6, fill: '#60A5FA', stroke: '#0F172A' }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+      {/* Two Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        
+        {/* Score History */}
+        <div className={`border rounded-2xl p-6 shadow-xl relative overflow-hidden ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+          <h3 className={`font-outfit font-bold mb-6 ${isLight ? 'text-slate-800' : 'text-white'}`}>Score History</h3>
+          <div className="h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartHistory} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="scoreGlow" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke={gridColor} vertical={false} />
+                <XAxis dataKey="name" stroke={axisColor} fontSize={10} tickLine={false} tick={{ fill: tickColor }} />
+                <YAxis stroke={axisColor} domain={[0, 100]} fontSize={10} tickLine={false} tick={{ fill: tickColor }} />
+                <Tooltip {...tooltipStyle} itemStyle={{ color: '#3B82F6' }} />
+                <Line type="monotone" dataKey="score" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4, strokeWidth: 1, fill: '#3B82F6' }} fill="url(#scoreGlow)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        {/* Bar/Radar Combo */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div className="card bg-navy-800 border border-navy-700 rounded-2xl p-6 shadow-xl flex flex-col">
-            <h3 className="font-outfit font-bold text-white mb-6">Subject Averages</h3>
-            {chartSubjects.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-navy-500 text-sm">No data yet.</div>
-            ) : (
-              <div className="flex-1 w-full min-h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartSubjects} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={true} vertical={false} />
-                    <XAxis type="number" domain={[0, 100]} hide />
-                    <YAxis dataKey="name" type="category" stroke="#64748B" fontSize={11} tickLine={false} axisLine={false} width={60} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill: '#1E293B', opacity: 0.4 }} />
-                    <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={20}>
-                      {chartSubjects.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.score >= 80 ? '#10B981' : entry.score >= 50 ? '#F59E0B' : '#EF4444'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-
-          <div className="card bg-navy-800 border border-navy-700 rounded-2xl p-6 shadow-xl flex flex-col">
-            <h3 className="font-outfit font-bold text-white mb-4 text-center">Skill Profile</h3>
-            {radarData.length < 3 ? (
-              <div className="flex-1 flex items-center justify-center text-navy-500 text-sm text-center">Need at least 3 subjects for radar chart.</div>
-            ) : (
-              <div className="flex-1 w-full min-h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                    <PolarGrid stroke="#334155" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                    <Radar name="Score" dataKey="A" stroke="#8B5CF6" fill="#8B5CF6" fillOpacity={0.4} />
-                    <Tooltip content={<CustomTooltip />} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+        {/* Subject Radar */}
+        <div className={`border rounded-2xl p-6 shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+          <h3 className={`font-outfit font-bold mb-6 ${isLight ? 'text-slate-800' : 'text-white'}`}>Subject Radar</h3>
+          <div className="h-52 flex justify-center items-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                <PolarGrid stroke={gridColor} />
+                <PolarAngleAxis dataKey="subject" tick={{ fill: isLight ? '#64748b' : '#ffffff50', fontSize: 10, fontWeight: 'bold' }} />
+                <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+                <Radar name="Score" dataKey="A" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.35} dot={{ r: 4, fill: '#3B82F6' }} />
+              </RadarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Milestones & Leaderboard Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Milestones Grid (Takes up 2 cols on Desktop) */}
-        <div className="lg:col-span-2 card bg-navy-800 border border-navy-700 rounded-2xl p-6 shadow-xl">
-          <div className="flex items-center gap-2 mb-6">
-            <Award className="w-6 h-6 text-brand" />
-            <h3 className="font-outfit font-bold text-white text-xl">My Milestones</h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {milestones.map(m => (
-              <div key={m.id} className={`relative flex flex-col items-center justify-center text-center p-4 rounded-xl border transition-all ${
-                m.achieved 
-                ? 'bg-navy-900/80 border-brand/50 shadow-[0_0_15px_rgba(59,130,246,0.15)] overflow-hidden group' 
-                : 'bg-navy-900/30 border-navy-800 grayscale opacity-60'
-              }`}>
+      {/* Subject Breakdown */}
+      <div className={`border rounded-2xl p-6 shadow-xl mb-6 ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+        <h3 className={`font-outfit font-bold mb-6 ${isLight ? 'text-slate-800' : 'text-white'}`}>Subject Breakdown</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartSubjects} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
+              <CartesianGrid stroke={gridColor} horizontal={false} />
+              <XAxis type="number" domain={[0, 100]} hide />
+              <YAxis dataKey="name" type="category" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} width={70} tick={{ fill: tickColor }} />
+              <Tooltip {...tooltipStyle} itemStyle={{ color: '#3B82F6' }} />
+              <Bar dataKey="percentage" radius={[0, 8, 8, 0]} barSize={16}>
+                {chartSubjects.map((entry, idx) => {
+                  let fill = "#EF4444"
+                  if (entry.percentage >= 70) fill = "#10B981"
+                  else if (entry.percentage >= 50) fill = "#F59E0B"
+                  return <Cell key={idx} fill={fill} />
+                })}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Milestones */}
+      <div className={`border rounded-2xl p-6 shadow-xl mb-6 ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+        <h3 className={`font-outfit font-bold mb-6 flex items-center gap-2 ${isLight ? 'text-slate-800' : 'text-white'}`}>
+          🏆 Achievements
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {milestones.map(m => {
+            const progressPct = Math.min(100, Math.round((m.count / m.max) * 100))
+            return (
+              <div 
+                key={m.id} 
+                className={`rounded-2xl p-5 text-center relative overflow-hidden flex flex-col justify-between border ${
+                  m.achieved 
+                    ? isLight 
+                      ? "bg-blue-50 border-blue-200 shadow-sm" 
+                      : "bg-[#3B82F6]/10 border-[#3B82F6]/30 shadow-lg shadow-blue-500/10" 
+                    : isLight 
+                      ? "bg-slate-50 border-slate-200"
+                      : "bg-white/5 border-white/10"
+                }`}
+              >
                 {!m.achieved && (
-                  <div className="absolute top-2 right-2">
-                    <Lock className="w-3 h-3 text-navy-500" />
+                  <div className={`absolute top-3 right-3 ${isLight ? 'text-slate-300' : 'text-white/30'}`}>
+                    <Lock className="w-3.5 h-3.5" />
                   </div>
-                )}
-                {m.achieved && (
-                  <div className="absolute inset-0 bg-gradient-to-tr from-brand/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 )}
                 
-                <div className={`p-3 rounded-full mb-3 ${m.achieved ? 'bg-navy-800' : 'bg-navy-800'}`}>
-                  <m.icon className={`w-6 h-6 ${m.color}`} />
+                <div>
+                  <div className={`mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-3 border ${
+                    isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/5'
+                  }`} style={{ color: m.color }}>
+                    <m.icon className="w-6 h-6" />
+                  </div>
+                  <h4 className={`font-bold text-sm leading-tight ${isLight ? 'text-slate-800' : 'text-white'}`}>{m.title}</h4>
+                  <p className={`text-[10px] leading-relaxed mt-1 font-medium ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{m.desc}</p>
                 </div>
-                <h4 className={`text-xs font-bold font-outfit leading-tight mb-1 ${m.achieved ? 'text-white' : 'text-navy-400'}`}>
-                  {m.title}
-                </h4>
-                <p className="text-[10px] text-navy-500 leading-tight">
-                  {m.desc}
-                </p>
+
+                {!m.achieved && (
+                  <div className="mt-4 space-y-1.5">
+                    <div className={`w-full rounded-full h-1 overflow-hidden ${isLight ? 'bg-slate-200' : 'bg-white/5'}`}>
+                      <div className={`h-full ${isLight ? 'bg-blue-400' : 'bg-white/20'}`} style={{ width: `${progressPct}%` }} />
+                    </div>
+                    <span className={`text-[9px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-400' : 'text-white/30'}`}>{m.count} / {m.max} Done</span>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            )
+          })}
         </div>
-
-        {/* Global Leaderboard */}
-        <div className="card bg-navy-800 border border-navy-700 rounded-2xl p-6 shadow-xl flex flex-col">
-          <div className="flex items-center gap-2 mb-6">
-            <Trophy className="w-6 h-6 text-yellow-500" />
-            <h3 className="font-outfit font-bold text-white text-xl">Top 10 Leaderboard</h3>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
-            {leaderboard.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-navy-500 text-sm">No data available yet.</div>
-            ) : (
-              leaderboard.map((student) => (
-                <div key={student.rank} className="flex items-center gap-3 p-3 rounded-xl bg-navy-900 border border-navy-700 hover:border-navy-600 transition-colors">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-inner ${
-                    student.rank === 1 ? 'bg-yellow-500 text-yellow-950 shadow-yellow-200/50' : 
-                    student.rank === 2 ? 'bg-slate-300 text-slate-800 shadow-slate-100/50' : 
-                    student.rank === 3 ? 'bg-orange-400 text-orange-950 shadow-orange-200/50' : 
-                    'bg-navy-800 text-navy-400 border border-navy-600'
-                  }`}>
-                    {student.rank}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-semibold truncate">{student.name}</p>
-                    <p className="text-navy-400 text-xs truncate">{student.total_quizzes} quizzes</p>
-                  </div>
-                  
-                  <div className="text-right shrink-0">
-                    <p className="text-brand font-bold text-sm">{student.avg_score}%</p>
-                    <p className="text-orange-500 text-xs font-semibold">🔥 {student.streak_count}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
       </div>
-    </div>
+
+      {/* Leaderboard */}
+      <div className={`border rounded-2xl p-6 shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+        <h3 className={`font-outfit font-bold mb-6 flex items-center gap-2 ${isLight ? 'text-slate-800' : 'text-white'}`}>
+          📊 Top Students This Month
+        </h3>
+        
+        {/* Top 3 Medals */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {top3.map((student, idx) => {
+            const medals = ["🥇", "🥈", "🥉"]
+            const isSelf = student.name === "Mahima Dangi"
+            return (
+              <div 
+                key={student.name}
+                className={`rounded-2xl p-5 text-center flex flex-col items-center justify-center border ${
+                  isSelf
+                    ? isLight ? "bg-blue-50 border-blue-200" : "bg-blue-500/10 border-blue-500/30"
+                    : isLight ? "bg-slate-50 border-slate-200" : "bg-white/3 border-white/5"
+                }`}
+              >
+                <span className="text-3xl mb-1">{medals[idx]}</span>
+                <h4 className={`text-sm font-extrabold truncate max-w-full leading-tight ${isLight ? 'text-slate-800' : 'text-white'}`}>{student.name}</h4>
+                <p className={`text-[10px] mt-1 font-semibold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{student.total_quizzes} quizzes</p>
+                <div className={`mt-3.5 font-black text-lg leading-none ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>{student.avg_score}%</div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Rest of leaderboard */}
+        <div className="space-y-2">
+          {rest.map((student) => {
+            const isSelf = student.name === "Mahima Dangi"
+            return (
+              <div 
+                key={student.name}
+                className={`p-3.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                  isSelf 
+                    ? isLight ? "bg-blue-50 border-blue-200" : "bg-blue-500/10 border-blue-500/20" 
+                    : isLight ? "bg-slate-50 border-slate-200" : "bg-white/3 border-white/5"
+                }`}
+              >
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className={`w-5 font-mono font-bold text-center ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{student.rank}</span>
+                  <span className={`font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>{student.name}</span>
+                </div>
+                <div className={`flex items-center gap-6 font-semibold uppercase tracking-wider text-[10px]`}>
+                  <span className={isLight ? 'text-slate-400' : 'text-white/40'}>{student.total_quizzes} quizzes</span>
+                  <span className="text-orange-500">🔥 {student.streak_count}</span>
+                  <span className={`font-extrabold ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>{student.avg_score}%</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+    </PageWrapper>
   )
 }

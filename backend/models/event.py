@@ -22,3 +22,8 @@ class Event(Base):
     reminder_lead_days = Column(Integer, default=1)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Course & Semester columns
+    course_id        = Column(UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True)
+    semester_number  = Column(Integer, nullable=True)   # null = all semesters
+

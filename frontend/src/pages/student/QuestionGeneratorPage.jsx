@@ -2,52 +2,53 @@ import { useState, useEffect } from "react"
 import { 
   GitBranch, Database, Monitor, Network, Coffee, Code, 
   HelpCircle, ArrowRight, ArrowLeft, Check, X, Award, 
-  Download, RefreshCw, Sparkles, BookOpen, BrainCircuit 
+  Download, RefreshCw, Sparkles, BookOpen, BrainCircuit, Loader2
 } from "lucide-react"
 import { getSubjects } from "../../services/chatbotService"
 import { generateQuestions, submitPractice } from "../../services/questionService"
 import toast from "react-hot-toast"
+import PageWrapper from "../../components/PageWrapper"
+import { useTheme } from "../../context/ThemeContext"
 
 const SUBJECT_DETAILS = {
-  DSA: { icon: GitBranch, color: "from-blue-600 to-indigo-600", accent: "text-blue-400", border: "border-blue-500/30" },
-  DBMS: { icon: Database, color: "from-purple-600 to-pink-600", accent: "text-purple-400", border: "border-purple-500/30" },
-  OS: { icon: Monitor, color: "from-emerald-600 to-teal-600", accent: "text-emerald-400", border: "border-emerald-500/30" },
-  CN: { icon: Network, color: "from-amber-600 to-orange-600", accent: "text-amber-400", border: "border-amber-500/30" },
-  JAVA: { icon: Coffee, color: "from-red-600 to-rose-600", accent: "text-red-400", border: "border-red-500/30" },
-  PYTHON: { icon: Code, color: "from-cyan-600 to-blue-600", accent: "text-cyan-400", border: "border-cyan-500/30" }
+  DSA: { icon: GitBranch, color: "from-blue-600 to-indigo-600", accent: "#3B82F6", textAccent: "text-blue-400" },
+  DBMS: { icon: Database, color: "from-purple-600 to-pink-600", accent: "#8B5CF6", textAccent: "text-purple-400" },
+  OS: { icon: Monitor, color: "from-emerald-600 to-teal-600", accent: "#10B981", textAccent: "text-emerald-400" },
+  CN: { icon: Network, color: "from-amber-600 to-orange-600", accent: "#F59E0B", textAccent: "text-amber-400" },
+  JAVA: { icon: Coffee, color: "from-red-600 to-rose-600", accent: "#EF4444", textAccent: "text-red-400" },
+  PYTHON: { icon: Code, color: "from-cyan-600 to-blue-600", accent: "#06B6D4", textAccent: "text-cyan-400" }
 }
 
 export default function QuestionGeneratorPage() {
-  // Navigation & Config State
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const [step, setStep] = useState(1)
   const [mode, setMode] = useState("setup") // "setup" | "practice" | "results"
   const [subjects, setSubjects] = useState([])
   const [loadingSubjects, setLoadingSubjects] = useState(true)
   
-  // Selection State
-  const [selectedSubject, setSelectedSubject] = useState(null) // Object from SUBJECTS
+  const [selectedSubject, setSelectedSubject] = useState(null)
   const [topic, setTopic] = useState("")
-  const [difficulty, setDifficulty] = useState("medium") // "easy" | "medium" | "hard"
+  const [difficulty, setDifficulty] = useState("medium")
   const [count, setCount] = useState(5)
   const [loadingGenerate, setLoadingGenerate] = useState(false)
 
   // Practice State
   const [questions, setQuestions] = useState([])
   const [currentIdx, setCurrentIdx] = useState(0)
-  const [selectedAnswers, setSelectedAnswers] = useState({}) // { questionId: "a"/"b"/"c"/"d" }
-  const [submittedAnswers, setSubmittedAnswers] = useState({}) // { questionId: { isCorrect, selected, correct, explanation } }
+  const [selectedAnswers, setSelectedAnswers] = useState({}) 
+  const [submittedAnswers, setSubmittedAnswers] = useState({}) 
   const [isCurrentAnswerSubmitted, setIsCurrentAnswerSubmitted] = useState(false)
-  const [activeResults, setActiveResults] = useState(null) // { results: [...], score, correct_count, total }
+  const [activeResults, setActiveResults] = useState(null) 
   const [expandedReviewId, setExpandedReviewId] = useState(null)
 
-  // Fetch subjects for metadata
   useEffect(() => {
     async function load() {
       try {
         const data = await getSubjects()
-        setSubjects(data)
+        setSubjects(data || [])
       } catch (err) {
-        toast.error("Failed to load subject topics.")
+        toast.error("Failed to load subjects.")
       } finally {
         setLoadingSubjects(false)
       }
@@ -55,14 +56,12 @@ export default function QuestionGeneratorPage() {
     load()
   }, [])
 
-  // Handle subject select
   const handleSelectSubject = (sub) => {
     setSelectedSubject(sub)
-    setTopic("") // Reset topic on subject change
+    setTopic("") 
     setStep(2)
   }
 
-  // Handle Generate Questions
   const handleGenerate = async () => {
     if (!selectedSubject) {
       toast.error("Please select a subject first.")
@@ -88,15 +87,14 @@ export default function QuestionGeneratorPage() {
       setIsCurrentAnswerSubmitted(false)
       setActiveResults(null)
       setMode("practice")
-      toast.success(`Successfully generated ${data.questions.length} questions!`)
+      toast.success(`Generated ${data.questions.length} questions successfully!`)
     } catch (err) {
-      toast.error(err.message || "Failed to generate questions. Please check your API key / connection.")
+      toast.error(err.message || "Failed to generate questions. Try again.")
     } finally {
       setLoadingGenerate(false)
     }
   }
 
-  // Submit Answer for the current question in single mode
   const handleSingleAnswerSubmit = () => {
     const currentQ = questions[currentIdx]
     const selected = selectedAnswers[currentQ.id]
@@ -105,15 +103,15 @@ export default function QuestionGeneratorPage() {
       return
     }
 
-    const isCorrect = selected === currentQ.correct_answer.toLowerCase().strip()
+    const correctAns = currentQ.correct_answer.toLowerCase().trim()
+    const isCorrect = selected === correctAns
     
-    // Save locally
     setSubmittedAnswers(prev => ({
       ...prev,
       [currentQ.id]: {
         isCorrect,
         selected,
-        correct: currentQ.correct_answer,
+        correct: correctAns,
         explanation: currentQ.explanation
       }
     }))
@@ -123,22 +121,19 @@ export default function QuestionGeneratorPage() {
     if (isCorrect) {
       toast.success("Correct answer! 🎉")
     } else {
-      toast.error("Incorrect answer. Check the explanation below.")
+      toast.error("Incorrect answer. Read the explanation below.")
     }
   }
 
-  // Next Question
   const handleNextQuestion = () => {
     if (currentIdx < questions.length - 1) {
       setCurrentIdx(prev => prev + 1)
       setIsCurrentAnswerSubmitted(false)
     } else {
-      // Last question completed, now compile final results
       submitFinalPractice()
     }
   }
 
-  // Submit final results to backend to sync/validate
   const submitFinalPractice = async () => {
     const formattedAnswers = Object.entries(selectedAnswers).map(([qid, ans]) => ({
       question_id: qid,
@@ -163,12 +158,6 @@ export default function QuestionGeneratorPage() {
     setMode("setup")
   }
 
-  // Print function
-  const handlePrint = () => {
-    window.print()
-  }
-
-  // Helper colors
   const getDiffBadge = (diff) => {
     const d = diff.toLowerCase()
     if (d === "easy") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
@@ -177,16 +166,15 @@ export default function QuestionGeneratorPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in print:bg-white print:text-black print:p-0">
-      
-      {/* ── HEADER ── */}
-      <div className="flex justify-between items-start print:hidden">
+    <PageWrapper>
+      {/* Page Header */}
+      <div className="flex justify-between items-start mb-6">
         <div>
-          <h1 className="text-3xl font-outfit font-bold text-white mb-2 flex items-center gap-2">
-            <BrainCircuit className="w-8 h-8 text-brand" />
+          <h1 className={`text-3xl font-outfit font-extrabold mb-2 flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+            <BrainCircuit className="w-8 h-8 text-blue-400 shrink-0" />
             AI Question Generator
           </h1>
-          <p className="text-navy-400 text-sm">
+          <p className={`text-sm ${isLight ? 'text-slate-400' : 'text-white/50'}`}>
             Generate custom, syllabus-aligned multiple choice questions for exam practice.
           </p>
         </div>
@@ -194,65 +182,78 @@ export default function QuestionGeneratorPage() {
 
       {/* ── SETUP MODE ── */}
       {mode === "setup" && (
-        <div className="space-y-6 print:hidden">
+        <div className="space-y-8 animate-fade-in">
           
           {/* STEP INDICATORS */}
-          <div className="bg-navy-800 border border-navy-700 rounded-2xl p-4 flex justify-between items-center max-w-2xl mx-auto">
-            {[1, 2, 3, 4].map((s) => (
-              <div key={s} className="flex items-center gap-2">
-                <button
-                  disabled={s > step && !selectedSubject}
-                  onClick={() => setStep(s)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
-                    step === s 
-                      ? "bg-brand text-white ring-4 ring-brand/20" 
-                      : step > s 
-                        ? "bg-brand/20 text-brand border border-brand/30" 
-                        : "bg-navy-900 text-navy-500 border border-navy-800"
-                  }`}
-                >
-                  {s}
-                </button>
-                <span className={`text-xs font-semibold hidden sm:inline ${step === s ? "text-white" : "text-navy-400"}`}>
-                  {s === 1 && "Subject"}
-                  {s === 2 && "Topic"}
-                  {s === 3 && "Difficulty"}
-                  {s === 4 && "Configure"}
-                </span>
-                {s < 4 && <div className="w-8 h-[2px] bg-navy-700 hidden sm:block" />}
-              </div>
-            ))}
+          <div className={`border rounded-2xl p-5 flex justify-between items-center max-w-2xl mx-auto relative overflow-hidden ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'}`}>
+            {[1, 2, 3, 4].map((s, idx) => {
+              const isCompleted = step > s
+              const isCurrent = step === s
+              const isFuture = step < s
+              
+              return (
+                <div key={s} className="flex items-center flex-1 last:flex-none">
+                  <div className="flex items-center gap-2.5 z-10">
+                    <button
+                      disabled={s > step && !selectedSubject}
+                      onClick={() => setStep(s)}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm transition-all cursor-pointer ${
+                        isCompleted
+                          ? "bg-[#8B5CF6] text-white"
+                          : isCurrent
+                          ? "border-2 border-[#8B5CF6] text-[#8B5CF6] bg-transparent font-extrabold shadow-lg shadow-[#8B5CF6]/15"
+                          : "bg-white/5 border border-white/10 text-white/30"
+                      }`}
+                    >
+                      {isCompleted ? <Check className="w-4 h-4" /> : s}
+                    </button>
+                    <span className={`text-xs font-bold hidden sm:inline ${isCurrent ? (isLight ? 'text-slate-800' : 'text-white') : (isLight ? 'text-slate-400' : 'text-white/40')}`}>
+                      {s === 1 && "Subject"}
+                      {s === 2 && "Topic"}
+                      {s === 3 && "Difficulty"}
+                      {s === 4 && "Configure"}
+                    </span>
+                  </div>
+                  {s < 4 && (
+                    <div className={`flex-1 h-[2px] mx-4 hidden sm:block ${isCompleted ? 'bg-[#8B5CF6]' : 'bg-white/10'}`} />
+                  )}
+                </div>
+              )
+            })}
           </div>
 
-          {/* STEP 1: SELECT SUBJECT */}
+          {/* STEP 1: CHOOSE A SUBJECT */}
           {step === 1 && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-white text-center">Step 1: Choose a Subject</h2>
+            <div className="space-y-6 animate-fade-in">
+              <h2 className={`text-xl font-bold text-center font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Step 1: Choose a Subject</h2>
               {loadingSubjects ? (
-                <div className="text-center text-navy-400 py-12">Loading subject metadata...</div>
+                <div className={`text-center py-12 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Loading syllabus topics...</div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
                   {subjects.map((sub) => {
-                    const meta = SUBJECT_DETAILS[sub.code] || { icon: BookOpen, color: "from-blue-600 to-indigo-600", accent: "text-blue-400", border: "border-blue-500/20" }
-                    const Icon = meta.icon
+                    const detail = SUBJECT_DETAILS[sub.code] || { icon: BookOpen, color: "from-blue-600 to-indigo-600", accent: "#3B82F6", textAccent: "text-blue-400" }
+                    const Icon = detail.icon
                     const isSel = selectedSubject?.code === sub.code
 
                     return (
                       <button
                         key={sub.code}
                         onClick={() => handleSelectSubject(sub)}
-                        className={`card relative overflow-hidden bg-navy-800 border p-6 text-left rounded-2xl transition-all hover:scale-[1.02] duration-300 ${
-                          isSel ? "border-brand ring-2 ring-brand/55" : "border-navy-700 hover:border-navy-600"
+                        className={`border rounded-2xl p-5 text-left transition-all hover:-translate-y-1 duration-300 flex flex-col justify-between cursor-pointer group ${
+                          isSel 
+                            ? "border-2 border-[#3B82F6] bg-[#3B82F6]/10 scale-105 shadow-xl shadow-blue-500/10" 
+                            : isLight ? "bg-white border-slate-200 hover:border-blue-300" : "bg-white/5 border-white/10 hover:border-white/20"
                         }`}
                       >
-                        <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${meta.color} opacity-10 rounded-bl-full`} />
-                        <div className={`p-3 rounded-xl inline-block bg-gradient-to-br ${meta.color} text-white mb-4`}>
-                          <Icon className="w-6 h-6" />
+                        <div>
+                          <div className={`p-3 rounded-xl inline-block bg-white/5 text-white mb-4 group-hover:scale-110 transition-transform`} style={{ color: detail.accent }}>
+                            <Icon className="w-6 h-6" />
+                          </div>
+                          <h3 className={`text-md font-bold mb-1 line-clamp-1 ${isLight ? 'text-slate-800' : 'text-white'}`}>{sub.name}</h3>
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${detail.textAccent}`}>{sub.code}</span>
                         </div>
-                        <h3 className="text-lg font-bold text-white mb-1">{sub.name}</h3>
-                        <p className="text-xs text-brand font-bold uppercase tracking-wider mb-2">{sub.code}</p>
-                        <p className="text-navy-400 text-xs line-clamp-2">
-                          {sub.topics ? `${sub.topics.length} core modules` : "Standard university syllabus"}
+                        <p className={`text-xs mt-3.5 font-medium ${isLight ? 'text-slate-400' : 'text-white/40'}`}>
+                          {sub.topics?.length || 4} topics listed
                         </p>
                       </button>
                     )
@@ -262,32 +263,33 @@ export default function QuestionGeneratorPage() {
             </div>
           )}
 
-          {/* STEP 2: ENTER TOPIC */}
+          {/* STEP 2: DEFINE THE TOPIC */}
           {step === 2 && (
-            <div className="max-w-2xl mx-auto space-y-6">
-              <h2 className="text-xl font-bold text-white text-center">Step 2: Define the Topic</h2>
-              <div className="bg-navy-800 border border-navy-700 rounded-2xl p-6 space-y-4">
-                <label className="block text-sm font-semibold text-white">Enter study topic details:</label>
+            <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+              <h2 className={`text-xl font-bold text-center font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Step 2: Define the Topic</h2>
+              <div className={`border rounded-2xl p-6 space-y-4 shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+                <label className={`block text-sm font-semibold ${isLight ? 'text-slate-700' : 'text-white'}`}>Enter study topic details:</label>
                 <input
                   type="text"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  placeholder="e.g., Binary Trees, SQL Joins, Deadlocks, OSI Model..."
-                  className="w-full bg-navy-900 border border-navy-700 text-white rounded-xl px-4 py-3 text-sm focus:border-brand focus:ring-1 focus:ring-brand/40 outline-none"
+                  placeholder="e.g. Binary Trees, SQL Joins, Deadlocks, OSI Model..."
+                  className="w-full bg-white/8 border border-white/15 rounded-xl px-4 py-3 text-white placeholder-white/25 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50 transition-all font-medium"
                 />
 
                 {selectedSubject?.topics && (
-                  <div className="space-y-2">
-                    <span className="text-xs font-semibold text-navy-400">Suggested Syllabus Topics:</span>
+                  <div className="space-y-3 pt-2">
+                    <span className={`text-xs font-bold uppercase tracking-wide ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Suggested Syllabus Topics:</span>
                     <div className="flex flex-wrap gap-2">
                       {selectedSubject.topics.map((t) => (
                         <button
                           key={t}
+                          type="button"
                           onClick={() => setTopic(t)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
                             topic === t 
-                              ? "bg-brand/20 text-brand border-brand" 
-                              : "bg-navy-900 border-navy-800 text-navy-400 hover:border-navy-700"
+                              ? "bg-violet-500/20 text-violet-300 border-violet-500/35 shadow-md shadow-violet-500/5" 
+                              : "bg-white/5 hover:bg-violet-500/15 border-white/10 text-white/60 hover:text-white"
                           }`}
                         >
                           {t}
@@ -298,17 +300,17 @@ export default function QuestionGeneratorPage() {
                 )}
               </div>
 
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <button
                   onClick={() => setStep(1)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-navy-800 hover:bg-navy-700 border border-navy-700 text-sm font-bold text-white transition-all"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-bold text-white transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" /> Back
                 </button>
                 <button
                   disabled={!topic.trim()}
                   onClick={() => setStep(3)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand/90 text-sm font-bold text-white transition-all disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8B5CF6] hover:bg-[#7C3AED] text-sm font-bold text-white transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   Next <ArrowRight className="w-4 h-4" />
                 </button>
@@ -316,48 +318,42 @@ export default function QuestionGeneratorPage() {
             </div>
           )}
 
-          {/* STEP 3: CHOOSE DIFFICULTY */}
+          {/* STEP 3: DIFFICULTY */}
           {step === 3 && (
-            <div className="max-w-2xl mx-auto space-y-6">
-              <h2 className="text-xl font-bold text-white text-center">Step 3: Choose Difficulty</h2>
-              <div className="grid grid-cols-1 gap-4">
+            <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+              <h2 className={`text-xl font-bold text-center font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Step 3: Choose Difficulty</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
-                  { key: "easy", name: "Easy 🟢", desc: "Basic concepts, definitions, straightforward recall questions" },
-                  { key: "medium", name: "Medium 🟡", desc: "Application-based, moderate complexity, analytical questions" },
-                  { key: "hard", name: "Hard 🔴", desc: "Advanced analysis, tricky edge cases, university exam style" }
-                ].map((d) => (
-                  <button
-                    key={d.key}
-                    onClick={() => setDifficulty(d.key)}
-                    className={`flex items-start gap-4 p-5 rounded-2xl border text-left transition-all ${
-                      difficulty === d.key 
-                        ? "bg-brand/10 border-brand ring-1 ring-brand/30" 
-                        : "bg-navy-800 border-navy-700 hover:border-navy-600"
-                    }`}
-                  >
-                    <div className="mt-1">
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${difficulty === d.key ? "border-brand" : "border-navy-500"}`}>
-                        {difficulty === d.key && <div className="w-2 h-2 rounded-full bg-brand" />}
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-white text-base mb-1">{d.name}</h4>
-                      <p className="text-navy-400 text-xs">{d.desc}</p>
-                    </div>
-                  </button>
-                ))}
+                  { key: "easy", name: "Easy 🟢", color: "border-green-500 bg-green-500/10", border: "border-white/10 hover:border-green-500/40 hover:bg-green-500/5", desc: "Basic concepts, core definitions" },
+                  { key: "medium", name: "Medium 🟡", color: "border-yellow-500 bg-yellow-500/10", border: "border-white/10 hover:border-yellow-500/40 hover:bg-yellow-500/5", desc: "Scenario application, analytical metrics" },
+                  { key: "hard", name: "Hard 🔴", color: "border-red-500 bg-red-500/10", border: "border-white/10 hover:border-red-500/40 hover:bg-red-500/5", desc: "Tricky edge cases, university exam questions" }
+                ].map((d) => {
+                  const isSel = difficulty === d.key
+                  return (
+                    <button
+                      key={d.key}
+                      onClick={() => setDifficulty(d.key)}
+                      className={`flex flex-col p-5 rounded-2xl border text-left transition-all cursor-pointer ${
+                        isSel ? d.color : d.border
+                      }`}
+                    >
+                      <h4 className={`font-bold text-md mb-2 ${isLight ? 'text-slate-800' : 'text-white'}`}>{d.name}</h4>
+                      <p className={`text-xs leading-relaxed font-medium ${isLight ? 'text-slate-500' : 'text-white/40'}`}>{d.desc}</p>
+                    </button>
+                  )
+                })}
               </div>
 
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <button
                   onClick={() => setStep(2)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-navy-800 hover:bg-navy-700 border border-navy-700 text-sm font-bold text-white transition-all"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-bold text-white transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" /> Back
                 </button>
                 <button
                   onClick={() => setStep(4)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand/90 text-sm font-bold text-white transition-all"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8B5CF6] hover:bg-[#7C3AED] text-sm font-bold text-white transition-colors cursor-pointer"
                 >
                   Next <ArrowRight className="w-4 h-4" />
                 </button>
@@ -365,16 +361,16 @@ export default function QuestionGeneratorPage() {
             </div>
           )}
 
-          {/* STEP 4: CONFIGURE & GENERATE */}
+          {/* STEP 4: COUNT & CONFIGURE */}
           {step === 4 && (
-            <div className="max-w-2xl mx-auto space-y-6">
-              <h2 className="text-xl font-bold text-white text-center">Step 4: Finalize & Generate</h2>
+            <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+              <h2 className={`text-xl font-bold text-center font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Step 4: Finalize Settings</h2>
               
-              <div className="bg-navy-800 border border-navy-700 rounded-2xl p-6 space-y-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-semibold text-white">Number of questions:</label>
-                    <span className="text-2xl font-black text-brand">{count}</span>
+              <div className={`border rounded-2xl p-6 space-y-6 shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+                <div>
+                  <div className="flex justify-between items-center mb-3">
+                    <label className={`text-sm font-semibold ${isLight ? 'text-slate-700' : 'text-white'}`}>Number of questions:</label>
+                    <span className="text-3xl font-black text-[#8B5CF6]">{count}</span>
                   </div>
                   <input
                     type="range"
@@ -382,42 +378,24 @@ export default function QuestionGeneratorPage() {
                     max="10"
                     value={count}
                     onChange={(e) => setCount(parseInt(e.target.value))}
-                    className="w-full h-2 bg-navy-950 rounded-lg appearance-none cursor-pointer accent-brand"
+                    className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#8B5CF6]"
                   />
-                  <div className="flex justify-between text-[10px] text-navy-400 font-bold px-1">
-                    <span>1 QUESTION</span>
+                  <div className="flex justify-between text-[10px] text-white/30 font-bold px-1 mt-1.5 uppercase tracking-wider">
+                    <span>1 question</span>
                     <span>5</span>
-                    <span>10 QUESTIONS</span>
+                    <span>10 questions</span>
                   </div>
                 </div>
 
-                <div className="border-t border-navy-700 pt-4 space-y-3">
-                  <span className="text-xs font-semibold text-navy-400 uppercase tracking-wider">Summary of request:</span>
-                  <div className="grid grid-cols-2 gap-3 text-xs bg-navy-900/50 p-4 rounded-xl border border-navy-800">
-                    <div>
-                      <span className="text-navy-400 block mb-0.5">Subject</span>
-                      <span className="text-white font-bold">{selectedSubject?.name} ({selectedSubject?.code})</span>
-                    </div>
-                    <div>
-                      <span className="text-navy-400 block mb-0.5">Topic</span>
-                      <span className="text-white font-bold">{topic}</span>
-                    </div>
-                    <div>
-                      <span className="text-navy-400 block mb-0.5">Difficulty</span>
-                      <span className="text-white font-bold capitalize">{difficulty}</span>
-                    </div>
-                    <div>
-                      <span className="text-navy-400 block mb-0.5">Count</span>
-                      <span className="text-white font-bold">{count} Questions</span>
-                    </div>
-                  </div>
+                <div className="border-t border-white/10 pt-4 text-center">
+                  <p className={`text-xs font-medium ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Questions will be generated dynamically by artificial intelligence.</p>
                 </div>
               </div>
 
               <div className="flex justify-between items-center gap-4">
                 <button
                   onClick={() => setStep(3)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-navy-800 hover:bg-navy-700 border border-navy-700 text-sm font-bold text-white transition-all"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-bold text-white transition-all cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" /> Back
                 </button>
@@ -425,62 +403,59 @@ export default function QuestionGeneratorPage() {
                 <button
                   disabled={loadingGenerate}
                   onClick={handleGenerate}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white font-bold shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-650 hover:opacity-95 text-white font-bold shadow-lg shadow-blue-500/25 transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {loadingGenerate ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      🤖 Generating questions...
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Generating AI Questions...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-5 h-5" /> Generate Questions
+                      <Sparkles className="w-5 h-5 animate-pulse" /> Generate Questions
                     </>
                   )}
                 </button>
               </div>
             </div>
           )}
+
         </div>
       )}
 
       {/* ── PRACTICE MODE ── */}
       {mode === "practice" && questions.length > 0 && (
-        <div className="max-w-3xl mx-auto space-y-6 print:hidden">
-          {/* Practice Header */}
-          <div className="bg-navy-800 border border-navy-700 rounded-2xl p-5 flex flex-wrap justify-between items-center gap-4">
-            <div>
-              <span className="inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase bg-brand/10 text-brand border border-brand/20 mb-2">
-                {selectedSubject?.code}
-              </span>
-              <h2 className="text-xl font-bold text-white line-clamp-1">{topic}</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-1 rounded-md border text-[10px] font-bold uppercase ${getDiffBadge(difficulty)}`}>
-                {difficulty}
-              </span>
-              <span className="text-navy-400 text-xs font-bold bg-navy-900 border border-navy-800 px-3 py-1 rounded-md">
-                Question {currentIdx + 1} of {questions.length}
-              </span>
-            </div>
-          </div>
-
+        <div className="max-w-2xl mx-auto space-y-6">
           {/* Progress Bar */}
-          <div className="w-full bg-navy-950 rounded-full h-2">
+          <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
             <div 
-              className="bg-brand h-2 rounded-full transition-all duration-300"
+              className="bg-blue-500 h-full rounded-full transition-all duration-300"
               style={{ width: `${((currentIdx) / questions.length) * 100}%` }}
             />
           </div>
 
-          {/* Question Box */}
-          <div className="bg-navy-800 border border-navy-700 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl">
-            <h3 className="text-lg sm:text-xl font-bold text-white leading-relaxed">
+          {/* Question Box Card */}
+          <div className={`border rounded-2xl p-8 shadow-2xl space-y-6 ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+            <div className={`flex justify-between items-center pb-2 border-b ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+              <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/40'}`}>
+                Question {currentIdx + 1} of {questions.length}
+              </span>
+              <div className="flex gap-2">
+                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${getDiffBadge(difficulty)}`}>
+                  {difficulty}
+                </span>
+                <span className="bg-blue-500/20 text-blue-300 text-[9px] font-bold px-2 py-0.5 rounded uppercase">
+                  {selectedSubject?.code}
+                </span>
+              </div>
+            </div>
+
+            <h3 className={`text-xl font-outfit font-semibold leading-relaxed ${isLight ? 'text-slate-800' : 'text-white'}`}>
               {questions[currentIdx].question_text}
             </h3>
 
-            {/* Options */}
-            <div className="grid grid-cols-1 gap-4">
+            {/* Answer Options */}
+            <div className="flex flex-col gap-3 mt-6">
               {[
                 { key: "a", text: questions[currentIdx].option_a },
                 { key: "b", text: questions[currentIdx].option_b },
@@ -490,24 +465,21 @@ export default function QuestionGeneratorPage() {
                 const qId = questions[currentIdx].id
                 const isSelected = selectedAnswers[qId] === opt.key
                 const isSubmitted = isCurrentAnswerSubmitted
-                const isCorrectOpt = questions[currentIdx].correct_answer.toLowerCase().strip() === opt.key
-                const userSelectedThis = submittedAnswers[qId]?.selected === opt.key
+                const corrAns = questions[currentIdx].correct_answer.toLowerCase().trim()
+                const isCorrect = corrAns === opt.key
+                const userSelected = submittedAnswers[qId]?.selected === opt.key
 
-                let optStyle = "bg-navy-900 border-navy-800 hover:border-navy-700 text-white"
-                let icon = null
-
+                let classes = "bg-white/5 border border-white/10 text-white/80 hover:text-white hover:border-blue-500/50 hover:bg-blue-500/5"
                 if (isSubmitted) {
-                  if (isCorrectOpt) {
-                    optStyle = "bg-emerald-500/10 border-emerald-500 text-emerald-400"
-                    icon = <Check className="w-4 h-4 text-emerald-400" />
-                  } else if (userSelectedThis) {
-                    optStyle = "bg-rose-500/10 border-rose-500 text-rose-400"
-                    icon = <X className="w-4 h-4 text-rose-400" />
+                  if (isCorrect) {
+                    classes = "bg-green-500/15 border-green-500/30 text-green-300"
+                  } else if (userSelected) {
+                    classes = "bg-red-500/15 border-red-500/30 text-red-300"
                   } else {
-                    optStyle = "bg-navy-900/40 border-navy-900 text-navy-600 opacity-60"
+                    classes = "bg-white/3 border border-white/5 text-white/20 opacity-50"
                   }
                 } else if (isSelected) {
-                  optStyle = "bg-brand/10 border-brand text-brand ring-1 ring-brand/35"
+                  classes = "bg-blue-500/15 border-blue-500 text-blue-300 font-semibold"
                 }
 
                 return (
@@ -515,38 +487,34 @@ export default function QuestionGeneratorPage() {
                     key={opt.key}
                     disabled={isSubmitted}
                     onClick={() => setSelectedAnswers(prev => ({ ...prev, [qId]: opt.key }))}
-                    className={`flex items-center justify-between p-4 rounded-xl border text-left text-sm font-semibold transition-all ${optStyle}`}
+                    className={`flex items-center gap-3 px-5 py-4 rounded-xl text-left text-sm transition-all cursor-pointer border ${classes}`}
                   >
-                    <span className="flex-1 pr-4">{opt.text}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="uppercase text-[10px] bg-navy-950 px-2 py-0.5 rounded border border-navy-800 text-navy-400">
-                        {opt.key}
-                      </span>
-                      {icon}
-                    </div>
+                    <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center font-mono font-bold text-white/60 shrink-0 uppercase">
+                      {opt.key}
+                    </span>
+                    <span className="flex-1">{opt.text}</span>
                   </button>
                 )
               })}
             </div>
 
-            {/* Explanation box */}
+            {/* Explanation card (slides down after answer) */}
             {isCurrentAnswerSubmitted && (
-              <div className="bg-navy-900 border border-navy-800 rounded-xl p-5 space-y-2 animate-slide-down">
-                <span className="text-xs font-bold text-brand uppercase tracking-wider flex items-center gap-1.5">
-                  <HelpCircle className="w-4 h-4" /> Explanation
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mt-4 animate-slide-down">
+                <span className="text-xs font-bold text-blue-400 uppercase tracking-wider block mb-1">
+                  💡 Explanation:
                 </span>
-                <p className="text-navy-300 text-xs sm:text-sm leading-relaxed">
+                <p className="text-white/70 text-sm leading-relaxed">
                   {questions[currentIdx].explanation || "No explanation provided."}
                 </p>
               </div>
             )}
           </div>
 
-          {/* Action buttons */}
           <div className="flex justify-between items-center gap-4">
             <button
               onClick={resetGenerator}
-              className="px-5 py-2.5 rounded-xl bg-navy-800 hover:bg-navy-700 border border-navy-700 text-sm font-bold text-white transition-all"
+              className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white transition-colors cursor-pointer"
             >
               Quit Practice
             </button>
@@ -555,164 +523,157 @@ export default function QuestionGeneratorPage() {
               <button
                 onClick={handleSingleAnswerSubmit}
                 disabled={!selectedAnswers[questions[currentIdx].id]}
-                className="px-6 py-2.5 rounded-xl bg-brand hover:bg-brand/90 text-sm font-bold text-white transition-all disabled:opacity-50"
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-650 text-xs font-bold text-white hover:opacity-90 transition-all disabled:opacity-50 cursor-pointer"
               >
                 Submit Answer
               </button>
             ) : (
               <button
                 onClick={handleNextQuestion}
-                className="px-6 py-2.5 rounded-xl bg-brand hover:bg-brand/90 text-sm font-bold text-white transition-all"
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-650 text-xs font-bold text-white hover:opacity-90 transition-all cursor-pointer"
               >
-                {currentIdx < questions.length - 1 ? "Next Question" : "Finish Practice"}
+                {currentIdx < questions.length - 1 ? "Next Question →" : "Finish & Score"}
               </button>
             )}
           </div>
         </div>
       )}
 
-      {/* ── RESULTS MODE ── */}
+      {/* ── RESULTS SCREEN ── */}
       {mode === "results" && activeResults && (
-        <div className="max-w-2xl mx-auto space-y-8">
-          
-          {/* Printable only view */}
-          <div className="hidden print:block text-black bg-white p-6 space-y-6">
-            <div className="border-b pb-4 mb-4">
-              <h1 className="text-2xl font-bold">IntelliLearn AI MCQ Practice Set</h1>
-              <p className="text-sm">Subject: {selectedSubject?.name} | Topic: {topic} | Difficulty: {difficulty}</p>
-              <p className="text-sm font-semibold mt-1">Score: {activeResults.correct_count} / {activeResults.total} ({activeResults.score}%)</p>
-            </div>
-            {questions.map((q, idx) => (
-              <div key={q.id} className="space-y-2 pb-6 border-b">
-                <h3 className="font-bold text-sm">Q{idx + 1}. {q.question_text}</h3>
-                <div className="grid grid-cols-2 gap-2 text-xs pl-4">
-                  <p>A: {q.option_a}</p>
-                  <p>B: {q.option_b}</p>
-                  <p>C: {q.option_c}</p>
-                  <p>D: {q.option_d}</p>
-                </div>
-                <p className="text-xs font-bold text-emerald-600 mt-2 pl-4">Correct Answer: {q.correct_answer.toUpperCase()}</p>
-                <p className="text-xs italic text-gray-600 pl-4">Explanation: {q.explanation}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-navy-800 border border-navy-700 rounded-3xl p-6 sm:p-8 text-center space-y-6 print:hidden">
-            <Award className="w-16 h-16 text-brand mx-auto animate-bounce" />
+        <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
+          <div className={`border rounded-2xl p-8 text-center space-y-6 shadow-2xl ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+            <h2 className={`text-2xl font-extrabold font-outfit ${isLight ? 'text-slate-900' : 'text-white'}`}>Practice Finished!</h2>
             
-            <div>
-              <h2 className="text-2xl font-bold text-white">Practice Finished!</h2>
-              <p className="text-navy-400 text-sm mt-1">Here is your performance summary</p>
+            {/* Score ring */}
+            <div className="relative w-36 h-36 mx-auto flex items-center justify-center">
+              <svg className="absolute w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="42" stroke="rgba(255,255,255,0.05)" strokeWidth="6" fill="transparent" />
+                <circle 
+                  cx="50" 
+                  cy="50" 
+                  r="42" 
+                  stroke="#3B82F6" 
+                  strokeWidth="6" 
+                  fill="transparent" 
+                  strokeDasharray="263.8"
+                  strokeDashoffset={263.8 - (263.8 * activeResults.score) / 100}
+                  className="transition-all duration-1000 ease-out"
+                />
+              </svg>
+              <div className="relative flex flex-col items-center">
+                <span className="text-4xl font-outfit font-bold text-white">{activeResults.correct_count}</span>
+                <span className="text-white/50 text-xs font-bold">/ {activeResults.total}</span>
+              </div>
             </div>
 
-            {/* Score circle */}
-            <div className="relative w-36 h-36 mx-auto flex flex-col items-center justify-center rounded-full border-4 border-brand bg-navy-950 shadow-xl shadow-brand/10">
-              <span className="text-3xl font-black text-white">{activeResults.correct_count} / {activeResults.total}</span>
-              <span className="text-xs text-navy-400 font-bold uppercase mt-1">CORRECT</span>
+            {/* Performance badge */}
+            <div className="pt-2">
+              <span className={`px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-widest ${
+                activeResults.score >= 80 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/35 animate-pulse' :
+                activeResults.score >= 50 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/35' :
+                'bg-red-500/20 text-red-400 border border-red-500/35'
+              }`}>
+                {activeResults.score >= 80 ? "Excellent" : activeResults.score >= 50 ? "Good" : "Keep Practicing"}
+              </span>
             </div>
 
-            {/* Performance message */}
-            <div>
-              <h3 className="text-xl font-bold text-white">
-                {activeResults.score >= 80 ? "Excellent! 🎉" : activeResults.score >= 60 ? "Good job! 👍" : "Keep practicing! 💪"}
-              </h3>
-              <p className="text-navy-400 text-xs mt-1">You scored {activeResults.score}%</p>
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/5 text-center">
+              <div className="bg-white/3 border border-white/5 rounded-xl p-3.5">
+                <span className="text-emerald-400 text-lg font-bold">{activeResults.correct_count}</span>
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider mt-1">Correct</p>
+              </div>
+              <div className="bg-white/3 border border-white/5 rounded-xl p-3.5">
+                <span className="text-red-400 text-lg font-bold">{activeResults.total - activeResults.correct_count}</span>
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider mt-1">Wrong</p>
+              </div>
+              <div className="bg-white/3 border border-white/5 rounded-xl p-3.5">
+                <span className="text-blue-400 text-lg font-bold">1.5m</span>
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider mt-1">Time Spent</p>
+              </div>
             </div>
 
-            {/* Percentage Bar */}
-            <div className="w-full bg-navy-950 rounded-full h-3">
-              <div 
-                className="bg-brand h-3 rounded-full transition-all duration-500"
-                style={{ width: `${activeResults.score}%` }}
-              />
-            </div>
-
-            {/* Print & Return Actions */}
-            <div className="flex gap-4 pt-2">
-              <button
-                onClick={handlePrint}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-navy-900 border border-navy-700 text-sm font-bold text-white hover:bg-navy-800 transition-all"
-              >
-                <Download className="w-4 h-4" /> Download as PDF
-              </button>
+            <div className="flex gap-3 pt-4">
               <button
                 onClick={resetGenerator}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-brand text-sm font-bold text-white hover:opacity-90 transition-all"
+                className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold border border-white/10 transition-colors text-xs cursor-pointer"
               >
-                <RefreshCw className="w-4 h-4" /> Generate New Set
+                Generate New Set
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-650 text-white font-bold transition-all shadow-md text-xs cursor-pointer"
+              >
+                Download PDF
               </button>
             </div>
           </div>
 
-          {/* Question Review Accordion */}
-          <div className="space-y-4 print:hidden">
-            <h3 className="text-lg font-bold text-white">Review Questions</h3>
-            <div className="space-y-3">
-              {questions.map((q, idx) => {
-                const userAns = selectedAnswers[q.id]
-                const corrAns = q.correct_answer.toLowerCase().strip()
-                const isCorrect = userAns === corrAns
-                const isOpen = expandedReviewId === q.id
+          {/* Review Accordion */}
+          <div className="space-y-3">
+            <h3 className={`text-lg font-bold font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Review Answers</h3>
+            
+            {questions.map((q, idx) => {
+              const uAns = selectedAnswers[q.id]
+              const correctAns = q.correct_answer.toLowerCase().trim()
+              const isCorrect = uAns === correctAns
+              const isOpen = expandedReviewId === q.id
 
-                return (
-                  <div key={q.id} className="bg-navy-800 border border-navy-700 rounded-xl overflow-hidden">
-                    <button
-                      onClick={() => setExpandedReviewId(isOpen ? null : q.id)}
-                      className="w-full flex items-center justify-between p-4 text-left hover:bg-navy-750 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`p-1.5 rounded-lg ${isCorrect ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
-                          {isCorrect ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                        </div>
-                        <span className="font-bold text-white text-sm sm:text-base line-clamp-1">
-                          Q{idx + 1}: {q.question_text}
-                        </span>
-                      </div>
-                      <span className="text-xs text-navy-400 font-bold uppercase shrink-0 ml-2">
-                        {isOpen ? "Hide" : "Show"}
+              return (
+                    <div className={`border rounded-2xl overflow-hidden shadow ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+                  <button
+                    onClick={() => setExpandedReviewId(isOpen ? null : q.id)}
+                    className="w-full flex items-center justify-between p-4 text-left hover:bg-white/10 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`p-1.5 rounded-lg ${isCorrect ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {isCorrect ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
                       </span>
-                    </button>
+                    <span className={`text-sm font-semibold truncate max-w-sm ${isLight ? 'text-slate-800' : 'text-white'}`}>
+                        Q{idx + 1}: {q.question_text}
+                      </span>
+                    </div>
+                    <span className={`text-xs font-bold uppercase ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{isOpen ? 'Close' : 'Review'}</span>
+                  </button>
 
-                    {isOpen && (
-                      <div className="p-4 bg-navy-900/50 border-t border-navy-700 text-xs sm:text-sm space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <p className={`p-3 rounded-lg border ${corrAns === "a" ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-400" : userAns === "a" ? "border-rose-500/40 bg-rose-500/5 text-rose-400" : "border-navy-800 text-navy-400"}`}>
-                            <strong>A:</strong> {q.option_a}
-                          </p>
-                          <p className={`p-3 rounded-lg border ${corrAns === "b" ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-400" : userAns === "b" ? "border-rose-500/40 bg-rose-500/5 text-rose-400" : "border-navy-800 text-navy-400"}`}>
-                            <strong>B:</strong> {q.option_b}
-                          </p>
-                          <p className={`p-3 rounded-lg border ${corrAns === "c" ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-400" : userAns === "c" ? "border-rose-500/40 bg-rose-500/5 text-rose-400" : "border-navy-800 text-navy-400"}`}>
-                            <strong>C:</strong> {q.option_c}
-                          </p>
-                          <p className={`p-3 rounded-lg border ${corrAns === "d" ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-400" : userAns === "d" ? "border-rose-500/40 bg-rose-500/5 text-rose-400" : "border-navy-800 text-navy-400"}`}>
-                            <strong>D:</strong> {q.option_d}
-                          </p>
-                        </div>
+                  {isOpen && (
+                    <div className="p-4 bg-black/20 border-t border-white/10 space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        {[
+                          { k: 'a', text: q.option_a },
+                          { k: 'b', text: q.option_b },
+                          { k: 'c', text: q.option_c },
+                          { k: 'd', text: q.option_d }
+                        ].map((opt) => {
+                          const isCorr = correctAns === opt.k
+                          const isSelected = uAns === opt.k
+                          let borderClass = 'border-white/10 text-white/60 bg-white/5'
+                          if (isCorr) borderClass = 'border-green-500/40 bg-green-500/10 text-green-300'
+                          else if (isSelected) borderClass = 'border-red-500/40 bg-red-500/10 text-red-300'
 
-                        <div className="bg-navy-900 border border-navy-800 p-4 rounded-xl space-y-1">
-                          <span className="text-[10px] font-bold text-brand uppercase tracking-wider block">EXPLANATION:</span>
-                          <p className="text-navy-300 leading-relaxed text-xs sm:text-sm">
-                            {q.explanation || "No explanation provided."}
-                          </p>
-                        </div>
+                          return (
+                            <div key={opt.k} className={`p-3 rounded-lg border flex items-center gap-2 ${borderClass}`}>
+                              <span className="font-bold uppercase">{opt.k}:</span>
+                              <span>{opt.text}</span>
+                            </div>
+                          )
+                        })}
                       </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+
+                      <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-4 text-xs leading-relaxed">
+                        <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider block mb-1">Explanation:</span>
+                        <p className="text-white/70">{q.explanation || 'No explanation provided.'}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
         </div>
       )}
-    </div>
+    </PageWrapper>
   )
-}
-
-// Simple helper polyfill in case strip() doesn't exist
-if (!String.prototype.strip) {
-  String.prototype.strip = function () {
-    return this.replace(/^\s+|\s+$/g, "");
-  };
 }

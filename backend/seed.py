@@ -1,6 +1,38 @@
 from database import SessionLocal
 from models.subject import Subject
+from models.course import Course
 import uuid
+
+COURSES = [
+    {
+        "name": "Master of Computer Applications",
+        "code": "MCA",
+        "total_semesters": 4,    # MSU MCA is 2-year = 4 semesters
+        "duration_years": 2,
+        "description": "2-year postgraduate programme in Computer Applications"
+    },
+    {
+        "name": "Bachelor of Computer Applications",
+        "code": "BCA",
+        "total_semesters": 6,
+        "duration_years": 3,
+        "description": "3-year undergraduate programme in Computer Applications"
+    },
+    {
+        "name": "Bachelor of Science (Computer Science)",
+        "code": "BSc CS",
+        "total_semesters": 6,
+        "duration_years": 3,
+        "description": "3-year undergraduate programme in Computer Science"
+    },
+    {
+        "name": "Master of Science (Computer Science)",
+        "code": "MSc CS",
+        "total_semesters": 4,
+        "duration_years": 2,
+        "description": "2-year postgraduate programme in Computer Science"
+    },
+]
 
 SUBJECTS = [
     {
@@ -48,9 +80,21 @@ SUBJECTS = [
 ]
 
 
+def seed_courses(db):
+    existing = db.query(Course).count()
+    if existing > 0:
+        print(f"Courses already seeded ({existing}). Skipping.")
+        return
+    for c in COURSES:
+        db.add(Course(id=uuid.uuid4(), **c))
+    db.commit()
+    print(f"[OK] Seeded {len(COURSES)} courses successfully.")
+
+
 def seed():
     db = SessionLocal()
     try:
+        seed_courses(db)
         existing = db.query(Subject).count()
         if existing > 0:
             print(f"[SKIP] Subjects already seeded ({existing} found).")

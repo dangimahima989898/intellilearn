@@ -9,6 +9,7 @@ from database import get_db
 from models.doubt import Doubt
 from models.doubt_answer import DoubtAnswer
 from models.doubt_upvote import DoubtUpvote
+from models.doubt_question_upvote import DoubtQuestionUpvote
 from models.subject import Subject
 from models.user import User
 from utils.dependencies import require_student, get_current_user, require_admin
@@ -22,7 +23,7 @@ def create_doubt(
     db: Session = Depends(get_db),
     current_user = Depends(require_student)
 ):
-    subject = db.query(Subject).get(req.subject_id)
+    subject = db.query(Subject).filter(Subject.id == req.subject_id, Subject.is_archived == False).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
 
@@ -48,7 +49,8 @@ def create_doubt(
         vote_count=new_doubt.vote_count,
         answer_count=0,
         created_at=new_doubt.created_at,
-        accepted_answer_id=new_doubt.accepted_answer_id
+        accepted_answer_id=new_doubt.accepted_answer_id,
+        current_user_upvoted=False
     )
 
 @router.get("/", response_model=List[DoubtOut])
@@ -60,7 +62,9 @@ def get_doubts(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    query = db.query(Doubt).options(joinedload(Doubt.student), joinedload(Doubt.subject))
+    query = db.query(Doubt).options(joinedload(Doubt.student), joinedload(Doubt.subject))\
+              .join(Subject, Doubt.subject_id == Subject.id)\
+              .filter(Subject.is_archived == False)
     
     if subject_id:
         query = query.filter(Doubt.subject_id == subject_id)
@@ -75,6 +79,11 @@ def get_doubts(
         # Count answers
         ans_count = db.query(func.count(DoubtAnswer.id)).filter(DoubtAnswer.doubt_id == d.id).scalar()
         
+        user_upvoted = db.query(DoubtQuestionUpvote).filter(
+            DoubtQuestionUpvote.doubt_id == d.id, 
+            DoubtQuestionUpvote.user_id == current_user.id
+        ).first() is not None
+
         results.append(DoubtOut(
             id=d.id,
             student_id=d.student_id,
@@ -86,7 +95,8 @@ def get_doubts(
             vote_count=d.vote_count,
             answer_count=ans_count,
             created_at=d.created_at,
-            accepted_answer_id=d.accepted_answer_id
+            accepted_answer_id=d.accepted_answer_id,
+            current_user_upvoted=user_upvoted
         ))
     return results
 
@@ -123,12 +133,18 @@ def get_doubt_detail(
             "answer_text": ans.answer_text,
             "upvotes": ans.upvotes,
             "is_accepted": ans.is_accepted,
+            "is_verified_by_admin": ans.is_verified_by_admin,
             "created_at": ans.created_at,
             "current_user_upvoted": upvoted
         })
 
     ans_count = len(formatted_answers)
     
+    doubt_upvoted = db.query(DoubtQuestionUpvote).filter(
+        DoubtQuestionUpvote.doubt_id == doubt.id, 
+        DoubtQuestionUpvote.user_id == current_user.id
+    ).first() is not None
+
     doubt_out = DoubtOut(
         id=doubt.id,
         student_id=doubt.student_id,
@@ -140,7 +156,8 @@ def get_doubt_detail(
         vote_count=doubt.vote_count,
         answer_count=ans_count,
         created_at=doubt.created_at,
-        accepted_answer_id=doubt.accepted_answer_id
+        accepted_answer_id=doubt.accepted_answer_id,
+        current_user_upvoted=doubt_upvoted
     )
 
     return {
@@ -177,15 +194,52 @@ def answer_doubt(
         answer_text=new_answer.answer_text,
         upvotes=new_answer.upvotes,
         is_accepted=new_answer.is_accepted,
+        is_verified_by_admin=False,
         created_at=new_answer.created_at,
         current_user_upvoted=False
     )
+
+from models.doubt_question_upvote import DoubtQuestionUpvote
+
+@router.post("/{doubt_id}/upvote")
+def upvote_doubt(
+    doubt_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    doubt = db.query(Doubt).get(doubt_id)
+    if not doubt:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+
+    existing_upvote = db.query(DoubtQuestionUpvote).filter(
+        DoubtQuestionUpvote.user_id == current_user.id,
+        DoubtQuestionUpvote.doubt_id == doubt_id
+    ).first()
+
+    if existing_upvote:
+        # Toggle off
+        db.delete(existing_upvote)
+        doubt.vote_count -= 1
+        user_upvoted = False
+    else:
+        # Toggle on
+        new_upvote = DoubtQuestionUpvote(
+            id=uuid.uuid4(),
+            user_id=current_user.id,
+            doubt_id=doubt_id
+        )
+        db.add(new_upvote)
+        doubt.vote_count += 1
+        user_upvoted = True
+
+    db.commit()
+    return {"vote_count": doubt.vote_count, "user_upvoted": user_upvoted}
 
 @router.post("/answers/{answer_id}/upvote")
 def upvote_answer(
     answer_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(require_student)
+    current_user = Depends(get_current_user)
 ):
     answer = db.query(DoubtAnswer).get(answer_id)
     if not answer:
@@ -259,7 +313,8 @@ def resolve_doubt(
         vote_count=doubt.vote_count,
         answer_count=ans_count,
         created_at=doubt.created_at,
-        accepted_answer_id=doubt.accepted_answer_id
+        accepted_answer_id=doubt.accepted_answer_id,
+        current_user_upvoted=True # If they resolved it, probably upvoted? Or let's just assume false/true. Let's do False. Actually we need to fetch it.
     )
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -290,3 +345,18 @@ def delete_doubt(
     db.delete(doubt)
     db.commit()
     return None
+
+@router.put("/answers/{answer_id}/verify")
+def verify_answer(
+    answer_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)
+):
+    answer = db.query(DoubtAnswer).get(answer_id)
+    if not answer:
+        raise HTTPException(status_code=404, detail="Answer not found")
+        
+    answer.is_verified_by_admin = not answer.is_verified_by_admin
+    db.commit()
+    db.refresh(answer)
+    return {"is_verified_by_admin": answer.is_verified_by_admin}

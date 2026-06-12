@@ -29,9 +29,9 @@ api.interceptors.response.use(
       localStorage.removeItem("intellilearn_token")
       localStorage.removeItem("intellilearn_user")
       window.location.href = "/login"
-      toast.error("Session expired. Please log in again.")
+      toast.error("Session expired. Please log in again.", { id: "session_expired" })
     } else if (error.code === "ECONNABORTED" || !error.response) {
-      toast.error("Connection error. Check your internet.")
+      toast.error("Connection error. Check your internet.", { id: "connection_error" })
     }
     return Promise.reject(error)
   }

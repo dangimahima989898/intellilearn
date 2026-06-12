@@ -9,6 +9,20 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     role: Optional[str] = "student"
+    course_id: Optional[str] = None        # required for students
+    current_semester: Optional[int] = 1
+    enrollment_no: Optional[str] = None
+    roll_number: Optional[str] = None
+    section: Optional[str] = None
+    phone: Optional[str] = None
+    admission_year: Optional[int] = None
+
+    @field_validator('current_semester')
+    @classmethod
+    def validate_semester(cls, v):
+        if v is not None and not (1 <= v <= 6):
+            raise ValueError('Semester must be between 1 and 6')
+        return v
 
     @field_validator("name")
     @classmethod
@@ -46,6 +60,14 @@ class TokenResponse(BaseModel):
     name: str
     user_id: str
     email: str
+    course_id: Optional[uuid.UUID] = None
+    course_code: Optional[str] = None
+    course_name: Optional[str] = None
+    current_semester: Optional[int] = None
+    enrollment_no: Optional[str] = None
+    section: Optional[str] = None
+    must_change_password: Optional[bool] = False
+
 
 
 class UserOut(BaseModel):

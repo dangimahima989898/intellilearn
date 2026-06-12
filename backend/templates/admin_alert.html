@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>New Student Access Request</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; color: #1f2937; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); padding: 40px; }
+        .logo { font-size: 24px; font-weight: bold; color: #ef4444; text-align: center; margin-bottom: 30px; }
+        .greeting { font-size: 18px; margin-bottom: 20px; font-weight: 600; }
+        .details-box { background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+        .detail-row { margin: 10px 0; font-size: 15px; }
+        .detail-label { font-weight: bold; color: #4b5563; }
+        .detail-value { font-family: monospace; font-size: 16px; color: #111827; }
+        .btn-container { text-align: center; margin: 30px 0; }
+        .btn { background-color: #ef4444; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; }
+        .footer { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">IntelliLearn Admin Alert</div>
+        <div class="greeting">Hello Admin,</div>
+        <p>A new student has requested access to the IntelliLearn platform.</p>
+        
+        <div class="details-box">
+            <div class="detail-row">
+                <span class="detail-label">Full Name:</span>
+                <span class="detail-value">{{full_name}}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Email:</span>
+                <span class="detail-value">{{email}}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Enrollment Number:</span>
+                <span class="detail-value">{{enrollment_number}}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Semester / Branch:</span>
+                <span class="detail-value">Semester {{semester}} / {{branch}} (Section {{section}})</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Reason:</span>
+                <span class="detail-value">{{reason}}</span>
+            </div>
+        </div>
+
+        <div class="btn-container">
+            <a href="{{admin_url}}" class="btn">Go to Verification Panel</a>
+        </div>
+
+        <div class="footer">
+            &copy; 2026 IntelliLearn. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

@@ -23,6 +23,11 @@ class Note(Base):
     summary = Column(Text, nullable=True)
     download_count = Column(Integer, default=0)
 
+    # Course & Semester columns
+    course_id        = Column(UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True)
+    semester_number  = Column(Integer, nullable=True)
+
     # Relationships
     subject = relationship("Subject", back_populates="notes")
     uploader = relationship("User", back_populates="notes")
+

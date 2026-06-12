@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Access Request Received</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; color: #1f2937; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); padding: 40px; }
+        .logo { font-size: 24px; font-weight: bold; color: #4f46e5; text-align: center; margin-bottom: 30px; }
+        .greeting { font-size: 18px; margin-bottom: 20px; font-weight: 600; }
+        .status-badge { background-color: #fef3c7; color: #d97706; padding: 6px 16px; border-radius: 9999px; font-size: 14px; font-weight: bold; display: inline-block; margin-bottom: 20px; }
+        .footer { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">IntelliLearn</div>
+        <div class="greeting">Hello {{full_name}},</div>
+        <div class="status-badge">Status: Pending Verification</div>
+        <p>We have successfully received your access request for the IntelliLearn platform.</p>
+        <p>Our administrative team is currently verifying your details against the enrollment list for <strong>{{branch}} - Semester {{semester}}</strong>.</p>
+        <p>Once approved, you will receive your temporary login credentials at this email address. This process normally takes 1-2 business days.</p>
+        <p>Thank you for your patience!</p>
+        <div class="footer">
+            &copy; 2026 IntelliLearn. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

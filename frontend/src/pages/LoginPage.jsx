@@ -1,219 +1,538 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
+import { useTheme } from "../context/ThemeContext"
 import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
   GraduationCap,
+  Shield,
+  Sun,
+  Moon,
+  ArrowRight,
   BookOpen,
   MessageSquare,
+  TrendingUp,
+  Users,
+  Settings,
+  BarChart3,
+  Loader2,
   Sparkles,
+  Zap,
 } from "lucide-react"
-import toast from "react-hot-toast"
+
+/* ── tiny floating particle data (stable ref) ─────────────────────────── */
+const DOTS = Array.from({ length: 38 }, (_, i) => ({
+  id: i,
+  x: Math.random() * 100,
+  y: Math.random() * 100,
+  r: 1.5 + Math.random() * 2.5,
+  dur: 7 + Math.random() * 9,
+  delay: Math.random() * 7,
+  op: 0.08 + Math.random() * 0.22,
+}))
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { isAuthenticated, user, loading } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
 
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [mounted, setMounted] = useState(false)
+  const [hovered, setHovered] = useState(null)   // "student" | "admin" | null
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError("")
-    if (!email || !password) {
-      setError("Please fill in all fields")
-      return
-    }
+  /* ── Entrance animation trigger ──────────────────────────────────────── */
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 80)
+    return () => clearTimeout(t)
+  }, [])
 
-    setLoading(true)
-    try {
-      const data = await login(email, password)
-      toast.success(`Welcome back, ${data.name}!`)
-      if (data.role === "admin") {
-        navigate("/admin")
-      } else {
-        navigate("/student")
-      }
-    } catch (err) {
-      const msg = err.response?.data?.detail || "Invalid email or password"
-      setError(msg)
-      toast.error(msg)
-    } finally {
-      setLoading(false)
+  /* ── Auth redirect ───────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!loading && isAuthenticated && user) {
+      navigate(user.role === "admin" ? "/admin" : "/student")
     }
+  }, [isAuthenticated, user, loading, navigate])
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: "100vh", background: "#05091A",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        fontFamily: "'Inter', sans-serif",
+      }}>
+        <Loader2 style={{ width: 36, height: 36, color: "#3B82F6", animation: "spin 1s linear infinite" }} />
+        <p style={{ marginTop: 16, color: "rgba(255,255,255,0.35)", fontSize: 11,
+          fontWeight: 700, letterSpacing: "0.15em" }}>VERIFYING SESSION…</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-navy-900 text-white flex relative overflow-hidden font-dm">
-      {/* Animated ambient background glows */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-blue-600/10 blur-[130px] animate-pulse" />
-        <div
-          className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-purple-600/10 blur-[130px] animate-pulse"
-          style={{ animationDelay: "3s" }}
-        />
+    <div style={{
+      minHeight: "100vh",
+      background: "#05091A",
+      fontFamily: "'Inter', 'Segoe UI', sans-serif",
+      position: "relative",
+      overflow: "hidden",
+      display: "flex", flexDirection: "column",
+      /* Entrance: fade + slide up from 30px */
+      opacity: mounted ? 1 : 0,
+      transform: mounted ? "translateY(0)" : "translateY(30px)",
+      transition: "opacity 0.75s cubic-bezier(0.16,1,0.3,1), transform 0.75s cubic-bezier(0.16,1,0.3,1)",
+    }}>
+
+      {/* ── Global keyframes ────────────────────────────────────────────── */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&family=Outfit:wght@400;700;900&display=swap');
+
+        @keyframes float-particle {
+          0%,100% { transform: translateY(0)   scale(1);    }
+          50%      { transform: translateY(-18px) scale(1.06); }
+        }
+        @keyframes aurora-drift {
+          0%,100% { transform: scale(1)    translate(0, 0);     }
+          33%      { transform: scale(1.15) translate(40px,-30px); }
+          66%      { transform: scale(0.88) translate(-25px,35px); }
+        }
+        @keyframes card-float {
+          0%,100% { transform: translateY(0px);  }
+          50%      { transform: translateY(-5px); }
+        }
+        @keyframes badge-shimmer {
+          0%   { background-position: -300px 0; }
+          100% { background-position: 300px 0;  }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes stagger-in {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0);    }
+        }
+        @keyframes line-grow {
+          from { width: 0; }
+          to   { width: 48px; }
+        }
+        .card-animate {
+          animation: stagger-in 0.65s cubic-bezier(0.16,1,0.3,1) forwards;
+          opacity: 0;
+        }
+        .header-animate {
+          animation: stagger-in 0.6s cubic-bezier(0.16,1,0.3,1) 0.1s forwards;
+          opacity: 0;
+        }
+        .hero-animate {
+          animation: stagger-in 0.7s cubic-bezier(0.16,1,0.3,1) 0.2s forwards;
+          opacity: 0;
+        }
+        .footer-animate {
+          animation: stagger-in 0.5s ease 0.7s forwards;
+          opacity: 0;
+        }
+      `}</style>
+
+      {/* ── Aurora background orbs ──────────────────────────────────────── */}
+      <div style={{ position:"absolute", inset:0, zIndex:0, pointerEvents:"none", overflow:"hidden" }}>
+        <div style={{
+          position:"absolute", width:600, height:600,
+          borderRadius:"50%",
+          background: "radial-gradient(circle, rgba(59,130,246,0.16) 0%, transparent 70%)",
+          top:"-15%", left:"-12%",
+          animation: "aurora-drift 18s ease-in-out infinite",
+        }} />
+        <div style={{
+          position:"absolute", width:700, height:700,
+          borderRadius:"50%",
+          background: "radial-gradient(circle, rgba(139,92,246,0.12) 0%, transparent 70%)",
+          bottom:"-18%", right:"-14%",
+          animation: "aurora-drift 22s ease-in-out 4s infinite reverse",
+        }} />
+        <div style={{
+          position:"absolute", width:400, height:400,
+          borderRadius:"50%",
+          background: "radial-gradient(circle, rgba(6,182,212,0.08) 0%, transparent 70%)",
+          top:"40%", left:"50%",
+          animation: "aurora-drift 15s ease-in-out 8s infinite",
+        }} />
       </div>
 
-      {/* Left side: Branding & Feature Highlights (Hidden on Mobile) */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 relative z-10 border-r border-navy-800 bg-navy-950/40 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <div className="bg-brand/10 p-2.5 rounded-xl border border-brand/20">
-            <GraduationCap className="w-8 h-8 text-brand" />
+      {/* ── Floating particles ──────────────────────────────────────────── */}
+      {DOTS.map(d => (
+        <div key={d.id} style={{
+          position:"absolute",
+          left: `${d.x}%`, top: `${d.y}%`,
+          width: d.r, height: d.r,
+          borderRadius:"50%",
+          background:"white",
+          opacity: d.op,
+          animation: `float-particle ${d.dur}s ease-in-out ${d.delay}s infinite`,
+          pointerEvents:"none", zIndex:1,
+        }} />
+      ))}
+
+      {/* ── Theme toggle ────────────────────────────────────────────────── */}
+      <button
+        onClick={toggleTheme}
+        title={theme === "dark" ? "Switch to Light" : "Switch to Dark"}
+        style={{
+          position:"fixed", top:22, right:22, zIndex:50,
+          width:40, height:40, borderRadius:10,
+          border:"1px solid rgba(255,255,255,0.1)",
+          background:"rgba(255,255,255,0.05)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          cursor:"pointer", color:"rgba(255,255,255,0.6)",
+          backdropFilter:"blur(10px)",
+          transition:"all 0.2s ease",
+        }}
+        onMouseOver={e => { e.currentTarget.style.background="rgba(255,255,255,0.12)"; e.currentTarget.style.color="#fff" }}
+        onMouseOut={e => { e.currentTarget.style.background="rgba(255,255,255,0.05)"; e.currentTarget.style.color="rgba(255,255,255,0.6)" }}
+      >
+        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <header className="header-animate" style={{
+        position:"relative", zIndex:10,
+        padding:"20px 36px",
+        display:"flex", alignItems:"center", gap:10,
+        borderBottom:"1px solid rgba(255,255,255,0.04)",
+      }}>
+        <div style={{
+          width:38, height:38, borderRadius:10,
+          background:"linear-gradient(135deg, rgba(59,130,246,0.18), rgba(99,102,241,0.18))",
+          border:"1px solid rgba(59,130,246,0.3)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+        }}>
+          <GraduationCap size={18} color="#60A5FA" />
+        </div>
+        <span style={{
+          fontFamily:"'Outfit', sans-serif", fontWeight:900, fontSize:19,
+          background:"linear-gradient(90deg, #60A5FA, #A78BFA)",
+          WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
+        }}>IntelliLearn</span>
+      </header>
+
+      {/* ── Hero ────────────────────────────────────────────────────────── */}
+      <main style={{
+        flex:1, display:"flex", flexDirection:"column",
+        alignItems:"center", justifyContent:"center",
+        position:"relative", zIndex:10,
+        padding:"28px 24px",
+      }}>
+        <div className="hero-animate" style={{ textAlign:"center", marginBottom:44, maxWidth:560 }}>
+          {/* Pill badge */}
+          <div style={{
+            display:"inline-flex", alignItems:"center", gap:7,
+            padding:"7px 18px", borderRadius:999, marginBottom:22,
+            background:"linear-gradient(90deg, rgba(59,130,246,0.12), rgba(139,92,246,0.12))",
+            border:"1px solid rgba(99,102,241,0.3)",
+          }}>
+            <Sparkles size={13} color="#818CF8" style={{ flexShrink:0 }} />
+            <span style={{
+              fontSize:10, fontWeight:700, letterSpacing:"0.14em",
+              textTransform:"uppercase",
+              background:"linear-gradient(90deg, #60A5FA, #A78BFA)",
+              WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
+            }}>Select Your Workspace</span>
           </div>
-          <span className="font-outfit font-extrabold text-2xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-blue-400">
-            IntelliLearn
-          </span>
+
+          <h1 style={{
+            fontFamily:"'Outfit', sans-serif", fontWeight:900,
+            fontSize:"clamp(2rem, 5vw, 3.2rem)",
+            letterSpacing:"-0.02em", lineHeight:1.1,
+            color:"#FFFFFF", marginBottom:14,
+          }}>
+            Welcome to{" "}
+            <span style={{
+              background:"linear-gradient(110deg, #3B82F6, #8B5CF6)",
+              WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
+            }}>IntelliLearn</span>
+          </h1>
+
+          {/* Animated underline */}
+          <div style={{
+            height:3, borderRadius:999, margin:"0 auto 18px",
+            background:"linear-gradient(90deg, #3B82F6, #8B5CF6)",
+            animation:"line-grow 0.7s cubic-bezier(0.4,0,0.2,1) 0.4s both",
+          }} />
+
+          <p style={{
+            fontSize:"clamp(0.85rem, 2vw, 1rem)",
+            color:"rgba(255,255,255,0.42)", lineHeight:1.75,
+            fontWeight:300, maxWidth:440, margin:"0 auto",
+          }}>
+            Choose your dedicated workspace to explore courseware, solve doubts, or administer the platform.
+          </p>
         </div>
 
-        <div className="my-auto space-y-8 max-w-md">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand/10 text-brand text-xs font-semibold border border-brand/20">
-              <Sparkles className="w-3.5 h-3.5" /> Powered by Advanced AI
-            </div>
-            <h1 className="text-4xl font-outfit font-bold leading-tight">
-              Elevate your MCA learning experience.
-            </h1>
-            <p className="text-navy-600 text-base leading-relaxed">
-              Unlock a smarter way to study with adaptive tests, instant doubt-solving, and customized study timetables.
-            </p>
-          </div>
+        {/* ── Portal Cards ─────────────────────────────────────────────── */}
+        <div style={{
+          display:"grid",
+          gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))",
+          gap:24, width:"100%", maxWidth:820,
+        }}>
 
-          <div className="space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="bg-navy-800 p-2 rounded-lg mt-0.5 border border-navy-700">
-                <BookOpen className="w-5 h-5 text-brand" />
+          {/* ── Student Card ─────────────────────────────────────────── */}
+          <Link
+            to="/login/student"
+            className="card-animate"
+            style={{ animationDelay:"0.35s", textDecoration:"none" }}
+            onMouseEnter={() => setHovered("student")}
+            onMouseLeave={() => setHovered(null)}
+          >
+            <div style={{
+              position:"relative",
+              background: hovered==="student"
+                ? "linear-gradient(145deg, rgba(59,130,246,0.1), rgba(20,184,166,0.07))"
+                : "rgba(255,255,255,0.04)",
+              border: hovered==="student"
+                ? "1px solid rgba(59,130,246,0.4)"
+                : "1px solid rgba(255,255,255,0.08)",
+              borderRadius:24,
+              padding:"32px 28px",
+              display:"flex", flexDirection:"column",
+              backdropFilter:"blur(16px)",
+              transition:"all 0.35s cubic-bezier(0.4,0,0.2,1)",
+              transform: hovered==="student" ? "translateY(-6px) scale(1.01)" : "translateY(0) scale(1)",
+              boxShadow: hovered==="student"
+                ? "0 24px 64px rgba(59,130,246,0.18), 0 0 0 1px rgba(59,130,246,0.15)"
+                : "0 8px 32px rgba(0,0,0,0.3)",
+              overflow:"hidden",
+              animation: hovered==="student" ? "none" : undefined,
+            }}>
+              {/* Card glow spot */}
+              <div style={{
+                position:"absolute", top:0, right:0,
+                width:180, height:180,
+                borderRadius:"50%",
+                background:"radial-gradient(circle, rgba(59,130,246,0.18) 0%, transparent 70%)",
+                opacity: hovered==="student" ? 1 : 0,
+                transition:"opacity 0.3s ease",
+                pointerEvents:"none",
+              }} />
+
+              {/* Icon */}
+              <div style={{
+                width:56, height:56, borderRadius:16, marginBottom:22,
+                background:"linear-gradient(135deg, rgba(59,130,246,0.22), rgba(20,184,166,0.22))",
+                border:"1px solid rgba(59,130,246,0.35)",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                transition:"transform 0.3s ease, box-shadow 0.3s ease",
+                transform: hovered==="student" ? "scale(1.1) rotate(-3deg)" : "scale(1)",
+                boxShadow: hovered==="student" ? "0 8px 24px rgba(59,130,246,0.3)" : "none",
+              }}>
+                <GraduationCap size={26} color="#60A5FA" />
               </div>
-              <div>
-                <h4 className="font-outfit font-semibold text-white">Smart Subject Hub</h4>
-                <p className="text-navy-600 text-sm">
-                  Access notes, lecture slides, and AI-curated assessments.
-                </p>
+
+              {/* Title */}
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                <h3 style={{
+                  fontFamily:"'Outfit', sans-serif", fontWeight:800,
+                  fontSize:22, color:"#FFFFFF", margin:0,
+                }}>Student Portal</h3>
+                <span style={{
+                  fontSize:9, fontWeight:700, letterSpacing:"0.1em",
+                  textTransform:"uppercase", padding:"2px 8px", borderRadius:999,
+                  background:"rgba(59,130,246,0.15)",
+                  border:"1px solid rgba(59,130,246,0.25)",
+                  color:"#60A5FA",
+                }}>LEARN</span>
               </div>
-            </div>
 
-            <div className="flex items-start gap-4">
-              <div className="bg-navy-800 p-2 rounded-lg mt-0.5 border border-navy-700">
-                <MessageSquare className="w-5 h-5 text-brand" />
+              <p style={{
+                color:"rgba(255,255,255,0.38)", fontSize:13,
+                lineHeight:1.7, marginBottom:22, fontWeight:300,
+              }}>
+                Access adaptive coursework, AI doubt companion, interactive quizzes, and personalised study calendars.
+              </p>
+
+              {/* Feature list */}
+              <div style={{
+                borderTop:"1px solid rgba(255,255,255,0.06)",
+                paddingTop:18, marginBottom:24,
+                display:"flex", flexDirection:"column", gap:12,
+              }}>
+                {[
+                  [BookOpen, "Smart Subject Repositories"],
+                  [MessageSquare, "24/7 AI Doubt Companion"],
+                  [TrendingUp, "Adaptive Practice Quizzes"],
+                ].map(([Icon, label]) => (
+                  <div key={label} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{
+                      width:28, height:28, borderRadius:8, flexShrink:0,
+                      background:"rgba(59,130,246,0.1)",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                    }}>
+                      <Icon size={13} color="#60A5FA" />
+                    </div>
+                    <span style={{ fontSize:12, color:"rgba(255,255,255,0.52)", fontWeight:500 }}>{label}</span>
+                  </div>
+                ))}
               </div>
-              <div>
-                <h4 className="font-outfit font-semibold text-white">AI Doubt Assistant</h4>
-                <p className="text-navy-600 text-sm">
-                  Get instant explanations for complex algorithms & equations.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <p className="text-navy-600 text-xs">
-          &copy; {new Date().getFullYear()} IntelliLearn. All rights reserved.
-        </p>
-      </div>
-
-      {/* Right side: Glassmorphism Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 relative z-10">
-        <div className="w-full max-w-md card bg-navy-800/40 border border-navy-700/50 backdrop-blur-md p-8 sm:p-10 rounded-2xl shadow-2xl animate-fade-in">
-          {/* Logo showing only on mobile */}
-          <div className="flex lg:hidden items-center gap-2 mb-6">
-            <GraduationCap className="w-7 h-7 text-brand" />
-            <span className="font-outfit font-bold text-xl tracking-tight">
-              IntelliLearn
-            </span>
-          </div>
-
-          <div className="space-y-2 mb-8">
-            <h2 className="text-3xl font-outfit font-bold text-white">Welcome Back</h2>
-            <p className="text-navy-600 text-sm">
-              Your AI-powered academic companion
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-navy-600 text-xs font-semibold uppercase tracking-wider mb-2">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-navy-600" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input-field pl-11 w-full bg-navy-950/60 border border-navy-700/60 focus:border-brand focus:ring-1 focus:ring-brand rounded-xl py-3 text-white placeholder-navy-600 text-sm transition-all outline-none"
-                  placeholder="name@student.com"
-                  required
+              {/* CTA */}
+              <div style={{
+                width:"100%", padding:"13px 20px",
+                borderRadius:14, display:"flex",
+                alignItems:"center", justifyContent:"center", gap:8,
+                background: hovered==="student"
+                  ? "linear-gradient(90deg, #2563EB, #0D9488)"
+                  : "linear-gradient(90deg, #3B82F6, #14B8A6)",
+                color:"#fff", fontWeight:700, fontSize:13,
+                letterSpacing:"0.03em",
+                transition:"all 0.3s ease",
+                boxShadow: hovered==="student" ? "0 8px 28px rgba(37,99,235,0.4)" : "0 4px 16px rgba(59,130,246,0.25)",
+              }}>
+                Enter Student Portal
+                <ArrowRight
+                  size={15}
+                  style={{ transition:"transform 0.2s ease", transform: hovered==="student" ? "translateX(4px)" : "none" }}
                 />
               </div>
             </div>
+          </Link>
 
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="block text-navy-600 text-xs font-semibold uppercase tracking-wider">
-                  Password
-                </label>
+          {/* ── Admin Card ───────────────────────────────────────────── */}
+          <Link
+            to="/login/admin"
+            className="card-animate"
+            style={{ animationDelay:"0.48s", textDecoration:"none" }}
+            onMouseEnter={() => setHovered("admin")}
+            onMouseLeave={() => setHovered(null)}
+          >
+            <div style={{
+              position:"relative",
+              background: hovered==="admin"
+                ? "linear-gradient(145deg, rgba(139,92,246,0.1), rgba(236,72,153,0.07))"
+                : "rgba(255,255,255,0.04)",
+              border: hovered==="admin"
+                ? "1px solid rgba(139,92,246,0.4)"
+                : "1px solid rgba(255,255,255,0.08)",
+              borderRadius:24,
+              padding:"32px 28px",
+              display:"flex", flexDirection:"column",
+              backdropFilter:"blur(16px)",
+              transition:"all 0.35s cubic-bezier(0.4,0,0.2,1)",
+              transform: hovered==="admin" ? "translateY(-6px) scale(1.01)" : "translateY(0) scale(1)",
+              boxShadow: hovered==="admin"
+                ? "0 24px 64px rgba(139,92,246,0.18), 0 0 0 1px rgba(139,92,246,0.15)"
+                : "0 8px 32px rgba(0,0,0,0.3)",
+              overflow:"hidden",
+            }}>
+              {/* Card glow spot */}
+              <div style={{
+                position:"absolute", top:0, right:0,
+                width:180, height:180,
+                borderRadius:"50%",
+                background:"radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%)",
+                opacity: hovered==="admin" ? 1 : 0,
+                transition:"opacity 0.3s ease",
+                pointerEvents:"none",
+              }} />
+
+              {/* Icon */}
+              <div style={{
+                width:56, height:56, borderRadius:16, marginBottom:22,
+                background:"linear-gradient(135deg, rgba(139,92,246,0.22), rgba(236,72,153,0.22))",
+                border:"1px solid rgba(139,92,246,0.35)",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                transition:"transform 0.3s ease, box-shadow 0.3s ease",
+                transform: hovered==="admin" ? "scale(1.1) rotate(3deg)" : "scale(1)",
+                boxShadow: hovered==="admin" ? "0 8px 24px rgba(139,92,246,0.3)" : "none",
+              }}>
+                <Shield size={26} color="#A78BFA" />
               </div>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-navy-600" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="input-field pl-11 pr-11 w-full bg-navy-950/60 border border-navy-700/60 focus:border-brand focus:ring-1 focus:ring-brand rounded-xl py-3 text-white placeholder-navy-600 text-sm transition-all outline-none"
-                  placeholder="••••••••"
-                  required
+
+              {/* Title */}
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                <h3 style={{
+                  fontFamily:"'Outfit', sans-serif", fontWeight:800,
+                  fontSize:22, color:"#FFFFFF", margin:0,
+                }}>Admin Console</h3>
+                <span style={{
+                  fontSize:9, fontWeight:700, letterSpacing:"0.1em",
+                  textTransform:"uppercase", padding:"2px 8px", borderRadius:999,
+                  background:"rgba(139,92,246,0.15)",
+                  border:"1px solid rgba(139,92,246,0.25)",
+                  color:"#A78BFA",
+                }}>CONTROL</span>
+              </div>
+
+              <p style={{
+                color:"rgba(255,255,255,0.38)", fontSize:13,
+                lineHeight:1.7, marginBottom:22, fontWeight:300,
+              }}>
+                Manage student registrations, seed assessments, design dynamic calendars, and evaluate performance metrics.
+              </p>
+
+              {/* Feature list */}
+              <div style={{
+                borderTop:"1px solid rgba(255,255,255,0.06)",
+                paddingTop:18, marginBottom:24,
+                display:"flex", flexDirection:"column", gap:12,
+              }}>
+                {[
+                  [Users, "Cohort & Role Management"],
+                  [Settings, "Content Seeding Engines"],
+                  [BarChart3, "Engagement Analytics"],
+                ].map(([Icon, label]) => (
+                  <div key={label} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{
+                      width:28, height:28, borderRadius:8, flexShrink:0,
+                      background:"rgba(139,92,246,0.1)",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                    }}>
+                      <Icon size={13} color="#A78BFA" />
+                    </div>
+                    <span style={{ fontSize:12, color:"rgba(255,255,255,0.52)", fontWeight:500 }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA */}
+              <div style={{
+                width:"100%", padding:"13px 20px",
+                borderRadius:14, display:"flex",
+                alignItems:"center", justifyContent:"center", gap:8,
+                background: hovered==="admin"
+                  ? "linear-gradient(90deg, #7C3AED, #BE185D)"
+                  : "linear-gradient(90deg, #8B5CF6, #EC4899)",
+                color:"#fff", fontWeight:700, fontSize:13,
+                letterSpacing:"0.03em",
+                transition:"all 0.3s ease",
+                boxShadow: hovered==="admin" ? "0 8px 28px rgba(124,58,237,0.4)" : "0 4px 16px rgba(139,92,246,0.25)",
+              }}>
+                Enter Admin Console
+                <ArrowRight
+                  size={15}
+                  style={{ transition:"transform 0.2s ease", transform: hovered==="admin" ? "translateX(4px)" : "none" }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-navy-600 hover:text-white transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
-                </button>
               </div>
             </div>
+          </Link>
 
-            {error && (
-              <div className="text-red-500 text-xs bg-red-500/10 border border-red-500/20 p-3 rounded-lg">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full py-3.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-outfit font-semibold text-sm transition-all shadow-lg shadow-brand/20 flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                "Sign In"
-              )}
-            </button>
-          </form>
-
-          <div className="mt-8 pt-6 border-t border-navy-700/30 text-center">
-            <p className="text-navy-600 text-sm">
-              Don't have an account?{" "}
-              <Link
-                to="/register"
-                className="text-brand hover:underline font-semibold"
-              >
-                Register here
-              </Link>
-            </p>
-          </div>
         </div>
-      </div>
+      </main>
+
+      {/* ── Footer ──────────────────────────────────────────────────────── */}
+      <footer className="footer-animate" style={{
+        textAlign:"center", padding:"18px 24px 24px",
+        position:"relative", zIndex:10,
+        borderTop:"1px solid rgba(255,255,255,0.04)",
+      }}>
+        <Link
+          to="/request-access"
+          style={{
+            color:"rgba(255,255,255,0.28)",
+            fontSize:12, fontWeight:600, textDecoration:"none",
+            transition:"color 0.2s ease",
+          }}
+          onMouseOver={e => e.currentTarget.style.color="#60A5FA"}
+          onMouseOut={e => e.currentTarget.style.color="rgba(255,255,255,0.28)"}
+        >
+          New student? Request verification credentials →
+        </Link>
+      </footer>
     </div>
   )
 }

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import date
 from database import get_db
 from models.user import User
+from models.course import Course
 from schemas.auth import (
     UserRegister,
     UserLogin,
@@ -21,6 +22,12 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(user_data: UserRegister, db: Session = Depends(get_db)):
     """Register a new user (student or admin)"""
+    if user_data.role == "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Student self-registration is disabled. Please contact the administrator or request access.",
+        )
+
     existing = db.query(User).filter(User.email == user_data.email.lower()).first()
     if existing:
         raise HTTPException(
@@ -37,7 +44,25 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         is_active=True,
         streak_count=0,
         last_active_date=date.today(),
+        must_change_password=False,  # Admin accounts don't force change by default
     )
+
+    if user_data.course_id:
+        try:
+            course_uuid = uuid.UUID(user_data.course_id)
+            course = db.query(Course).filter(Course.id == course_uuid).first()
+            if course:
+                new_user.course_id = course_uuid
+                new_user.current_semester = user_data.current_semester or 1
+        except ValueError:
+            pass  # invalid UUID — skip silently
+
+    new_user.enrollment_no  = user_data.enrollment_no
+    new_user.roll_number    = user_data.roll_number
+    new_user.section        = user_data.section
+    new_user.phone          = user_data.phone
+    new_user.admission_year = user_data.admission_year
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -46,6 +71,8 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         data={"sub": str(new_user.id), "role": new_user.role}
     )
 
+    course = db.query(Course).filter(Course.id == new_user.course_id).first() if new_user.course_id else None
+
     return TokenResponse(
         access_token=token,
         token_type="bearer",
@@ -53,7 +80,15 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         name=new_user.name,
         user_id=str(new_user.id),
         email=new_user.email,
+        course_id=new_user.course_id,
+        course_code=course.code if course else None,
+        course_name=course.name if course else None,
+        current_semester=new_user.current_semester,
+        enrollment_no=new_user.enrollment_no,
+        section=new_user.section,
+        must_change_password=new_user.must_change_password,
     )
+
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -88,6 +123,8 @@ def login(login_data: UserLogin, db: Session = Depends(get_db)):
 
     token = create_access_token(data={"sub": str(user.id), "role": user.role})
 
+    course = db.query(Course).filter(Course.id == user.course_id).first() if user.course_id else None
+
     return TokenResponse(
         access_token=token,
         token_type="bearer",
@@ -95,7 +132,16 @@ def login(login_data: UserLogin, db: Session = Depends(get_db)):
         name=user.name,
         user_id=str(user.id),
         email=user.email,
+        course_id=user.course_id,
+        course_code=course.code if course else None,
+        course_name=course.name if course else None,
+        current_semester=user.current_semester,
+        enrollment_no=user.enrollment_no,
+        section=user.section,
+        must_change_password=user.must_change_password,
     )
+
+
 
 
 @router.get("/me", response_model=UserOut)

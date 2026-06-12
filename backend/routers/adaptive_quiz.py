@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, avg
+from sqlalchemy import func, desc, cast, Integer
 from typing import List, Tuple
 import uuid
 import json
@@ -80,10 +80,10 @@ def detect_weak_chapters(student_id: uuid.UUID, subject_id: uuid.UUID, db: Sessi
         QuizAttempt.topic,
         Subject.name.label("subject_name"),
         func.count(QuizAnswer.id).label("total"),
-        func.sum(func.cast(QuizAnswer.is_correct, func.Integer)).label("correct")
+        func.sum(cast(QuizAnswer.is_correct, Integer)).label("correct")
     ).join(QuizAnswer, QuizAttempt.id == QuizAnswer.attempt_id)\
      .join(Subject, QuizAttempt.subject_id == Subject.id)\
-     .filter(QuizAttempt.student_id == student_id)
+     .filter(QuizAttempt.student_id == student_id, Subject.is_archived == False)
     
     if subject_id:
         query = query.filter(QuizAttempt.subject_id == subject_id)
@@ -113,7 +113,7 @@ async def start_adaptive_quiz(
     current_user = Depends(require_student)
 ):
     # 1. Find subject by ID
-    subject = db.query(Subject).filter(Subject.id == req.subject_id).first()
+    subject = db.query(Subject).filter(Subject.id == req.subject_id, Subject.is_archived == False).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
 
@@ -327,7 +327,8 @@ def get_quiz_history(
     attempts = db.query(QuizAttempt, Subject.name.label("subject_name")).join(
         Subject, QuizAttempt.subject_id == Subject.id
     ).filter(
-        QuizAttempt.student_id == current_user.id
+        QuizAttempt.student_id == current_user.id,
+        Subject.is_archived == False
     ).order_by(desc(QuizAttempt.started_at)).limit(20).all()
     
     history = []

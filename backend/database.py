@@ -9,11 +9,11 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/intellilearn")
 
-# NullPool for production, regular pool for development
 engine = create_engine(
     DATABASE_URL,
     echo=os.getenv("DEBUG", "false").lower() == "true",
     pool_pre_ping=True,
+    poolclass=NullPool,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

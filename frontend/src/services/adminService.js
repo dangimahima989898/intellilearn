@@ -1,9 +1,23 @@
 import api from "./api"
 
 const adminService = {
+  // Students
+  getStudents: async (courseId = null, semester = null, section = null, search = null) => {
+    const params = new URLSearchParams()
+    if (courseId) params.append("course_id", courseId)
+    if (semester) params.append("semester", semester)
+    if (section) params.append("section", section)
+    if (search) params.append("search", search)
+    const response = await api.get(`/admin/students?${params.toString()}`)
+    return response.data
+  },
+
   // Subjects
-  getSubjects: async () => {
-    const response = await api.get("/subjects")
+  getSubjects: async (courseId = null, semester = null) => {
+    const params = new URLSearchParams()
+    if (courseId) params.append("course_id", courseId)
+    if (semester) params.append("semester", semester)
+    const response = await api.get(`/subjects?${params.toString()}`)
     return response.data
   },
   createSubject: async (data) => {
@@ -18,16 +32,30 @@ const adminService = {
     const response = await api.delete(`/subjects/${id}`)
     return response.data
   },
+  getArchivedSubjects: async () => {
+    const response = await api.get("/subjects/archived")
+    return response.data
+  },
+  restoreSubject: async (id) => {
+    const response = await api.post(`/subjects/${id}/restore`)
+    return response.data
+  },
+  deleteSubjectPermanent: async (id) => {
+    const response = await api.delete(`/subjects/${id}/permanent`)
+    return response.data
+  },
 
   // Notes
-  getNotes: async (subjectId = null) => {
-    const url = subjectId ? `/notes?subject_id=${subjectId}` : "/notes"
-    const response = await api.get(url)
+  getNotes: async (subjectId = null, courseId = null, semester = null, includeArchived = false) => {
+    const params = new URLSearchParams()
+    if (subjectId) params.append("subject_id", subjectId)
+    if (courseId) params.append("course_id", courseId)
+    if (semester) params.append("semester", semester)
+    if (includeArchived) params.append("include_archived", "true")
+    const response = await api.get(`/notes?${params.toString()}`)
     return response.data
   },
   uploadNote: async (formData) => {
-    // Note: for multipart/form-data, the API interceptor handles the token,
-    // and axios automatically sets the multipart content-type when passing FormData
     const response = await api.post("/notes/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" }
     })
@@ -43,8 +71,11 @@ const adminService = {
   },
 
   // Timetable
-  getTimetable: async () => {
-    const response = await api.get("/timetable")
+  getTimetable: async (courseId = null, semester = null) => {
+    const params = new URLSearchParams()
+    if (courseId) params.append("course_id", courseId)
+    if (semester) params.append("semester", semester)
+    const response = await api.get(`/timetable?${params.toString()}`)
     return response.data
   },
   createTimetableSlot: async (data) => {
@@ -57,9 +88,12 @@ const adminService = {
   },
 
   // Events
-  getEvents: async (type = null) => {
-    const url = type ? `/events?event_type=${type}` : "/events"
-    const response = await api.get(url)
+  getEvents: async (type = null, courseId = null, semester = null) => {
+    const params = new URLSearchParams()
+    if (type) params.append("event_type", type)
+    if (courseId) params.append("course_id", courseId)
+    if (semester) params.append("semester", semester)
+    const response = await api.get(`/events?${params.toString()}`)
     return response.data
   },
   createEvent: async (data) => {
@@ -68,6 +102,45 @@ const adminService = {
   },
   deleteEvent: async (id) => {
     const response = await api.delete(`/events/${id}`)
+    return response.data
+  },
+
+  // Enrolled Students Registry & Onboarding
+  getEnrolledStudents: async (semester = null, branch = null, status = null, search = null) => {
+    const params = new URLSearchParams()
+    if (semester) params.append("semester", semester)
+    if (branch) params.append("branch", branch)
+    if (status) params.append("status", status)
+    if (search) params.append("search", search)
+    const response = await api.get(`/api/admin/enrolled-students?${params.toString()}`)
+    return response.data
+  },
+  resendCredentials: async (id) => {
+    const response = await api.post(`/api/admin/resend-credentials/${id}`)
+    return response.data
+  },
+  generateCredentials: async (id) => {
+    const response = await api.post(`/api/admin/generate-credentials/${id}`)
+    return response.data
+  },
+
+  // Semester advancement
+  advanceSemester: async (courseId, fromSemester, toSemester) => {
+    const response = await api.put("/admin/advance-semester", {
+      course_id: courseId,
+      from_semester: fromSemester,
+      to_semester: toSemester
+    })
+    return response.data
+  },
+
+  // Delete students
+  deleteStudent: async (id) => {
+    const response = await api.delete(`/admin/students/${id}`)
+    return response.data
+  },
+  deleteEnrolledStudent: async (id) => {
+    const response = await api.delete(`/api/admin/enrolled-students/${id}`)
     return response.data
   }
 }

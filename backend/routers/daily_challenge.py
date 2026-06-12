@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, and_, extract
+from sqlalchemy import func, desc, and_, extract, cast, Integer
 from typing import List, Optional
 import uuid
 import json
@@ -199,7 +199,7 @@ def get_leaderboard(
         User.name,
         func.sum(ChallengeSubmission.score_earned).label("total_score"),
         func.count(ChallengeSubmission.id).label("attempt_count"),
-        func.sum(func.cast(ChallengeSubmission.is_correct, func.Integer)).label("correct_count")
+        func.sum(cast(ChallengeSubmission.is_correct, Integer)).label("correct_count")
     ).join(ChallengeSubmission, User.id == ChallengeSubmission.student_id)\
      .filter(extract('month', ChallengeSubmission.submitted_at) == now.month)\
      .filter(extract('year', ChallengeSubmission.submitted_at) == now.year)\

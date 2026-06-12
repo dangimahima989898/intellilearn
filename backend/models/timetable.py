@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Time
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Time, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -23,5 +23,10 @@ class Timetable(Base):
     room = Column(String(50), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Course & Semester columns
+    course_id        = Column(UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True)
+    semester_number  = Column(Integer, nullable=True)
+
     # Relationships
     subject = relationship("Subject", back_populates="timetable")
+

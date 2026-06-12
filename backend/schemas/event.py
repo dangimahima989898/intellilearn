@@ -9,6 +9,8 @@ class EventCreate(BaseModel):
     event_type: str
     event_date: datetime
     reminder_lead_days: int = 1
+    course_id: Optional[uuid.UUID] = None
+    semester_number: Optional[int] = None
 
 class EventOut(BaseModel):
     id: uuid.UUID
@@ -20,6 +22,8 @@ class EventOut(BaseModel):
     created_by_name: Optional[str] = None
     created_at: datetime
     days_until: Optional[int] = 0
+    course_id: Optional[uuid.UUID] = None
+    semester_number: Optional[int] = None
 
     class Config:
         from_attributes = True

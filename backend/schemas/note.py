@@ -15,6 +15,8 @@ class NoteOut(BaseModel):
     created_at: datetime
     summary: Optional[str] = None
     download_count: int
+    course_id: Optional[uuid.UUID] = None
+    semester_number: Optional[int] = None
 
     class Config:
         from_attributes = True

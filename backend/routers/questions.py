@@ -97,11 +97,11 @@ async def generate_questions(
         )
     
     # Find subject by code
-    subject = db.query(Subject).filter(func.lower(Subject.code) == req.subject_code.lower()).first()
+    subject = db.query(Subject).filter(func.lower(Subject.code) == req.subject_code.lower(), Subject.is_archived == False).first()
     if not subject:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Subject with code '{req.subject_code}' not found"
+            detail=f"Subject with code '{req.subject_code}' not found or is archived"
         )
         
     # Build prompt
@@ -224,12 +224,15 @@ def list_questions(
     subject_id: Optional[uuid.UUID] = None,
     difficulty: Optional[str] = None,
     topic: Optional[str] = None,
+    include_archived: bool = False,
     page: int = 1,
     size: int = 20,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     query = db.query(Question, Subject.name.label("subject_name")).join(Subject, Question.subject_id == Subject.id)
+    if not include_archived:
+        query = query.filter(Subject.is_archived == False)
     
     if subject_id:
         query = query.filter(Question.subject_id == subject_id)
@@ -271,7 +274,7 @@ def get_question(
 ):
     result = db.query(Question, Subject.name.label("subject_name")).join(
         Subject, Question.subject_id == Subject.id
-    ).filter(Question.id == id).first()
+    ).filter(Question.id == id, Subject.is_archived == False).first()
     
     if not result:
         raise HTTPException(status_code=404, detail="Question not found")

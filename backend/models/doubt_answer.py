@@ -15,6 +15,7 @@ class DoubtAnswer(Base):
     answer_text = Column(Text, nullable=False)
     upvotes = Column(Integer, default=0)
     is_accepted = Column(Boolean, default=False)
+    is_verified_by_admin = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

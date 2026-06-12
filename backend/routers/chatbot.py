@@ -1,16 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 import re
+import io
+import PyPDF2
 from utils.sanitize import sanitize_text
 
 from database import get_db
 from models.chat_log import ChatLog
 from models.user import User
-from utils.dependencies import require_student, get_current_user
+from models.subject import Subject
+from utils.dependencies import require_student, require_admin, get_current_user
 from utils.llm_client import get_llm_response, get_provider_status
 from utils.rate_limiter import check_rate_limit
 
@@ -101,6 +104,7 @@ class ChatRequest(BaseModel):
     subject: str
     language: str = "english"
     conversation_history: list[MessageItem] = Field(default=[], max_length=10)
+    pdf_context: Optional[str] = None
 
     @field_validator('message')
     @classmethod
@@ -144,6 +148,15 @@ async def chat(
         + f"\n\nThe student is asking about {subject_label}."
         + f"\nThe user is communicating in {body.language}. Respond in the same language."
     )
+    if body.pdf_context:
+        # Truncate to ~4000 chars to stay within token limits
+        truncated_ctx = body.pdf_context[:4000]
+        dynamic_prompt += (
+            "\n\nThe student has uploaded a PDF document. Use the following extracted text "
+            "as additional context when answering their question. If the question relates to "
+            "the document, answer based on it. If not, use your general knowledge.\n"
+            f"--- PDF CONTENT ---\n{truncated_ctx}\n--- END OF PDF CONTENT ---"
+        )
 
     # 3. Build messages list (cap history to last 10)
     history = body.conversation_history[-10:]
@@ -186,10 +199,123 @@ async def chat(
     )
 
 
+ADMIN_SYSTEM_PROMPT = """You are IntelliLearn Admin AI — an intelligent assistant embedded inside the IntelliLearn College LMS Admin Panel for MLSU (Mohanlal Sukhadia University), Udaipur.
+
+You help college administrators with:
+- Managing subjects, notes, timetables, events, and students in the LMS
+- Explaining how to use the admin panel features (Subjects, Notes, Timetable, Events & Exams, Students, Doubt Board, Notifications)
+- Answering questions about course structures (MCA, BCA, BSc CS, MSc IT) and semester management
+- Providing guidance on student cohort management, semester advancement, and access requests
+- Tips on best practices for academic content management
+
+Key features to help with:
+- Subjects: Add/manage subjects per course and semester with color coding
+- Notes: Upload PDFs/links per subject; students access these
+- Timetable: Create weekly class schedule slots with room/time
+- Events & Exams: Create events with reminders, push notifications to students
+- Students: View cohorts, advance semesters, manage enrollments
+- Doubt Board: Monitor student questions and answers
+- Notifications: Send targeted announcements to specific courses/semesters
+
+Be concise, professional, and actionable. Use bullet points for lists. Respond in English."""
+
+
+class AdminChatRequest(BaseModel):
+    message: str = Field(..., max_length=1000)
+    conversation_history: list[MessageItem] = Field(default=[], max_length=20)
+
+    @field_validator('message')
+    @classmethod
+    def sanitize_field(cls, v: str) -> str:
+        return sanitize_text(v)
+
+
+@router.post("/admin-chat")
+async def admin_chat(
+    body: AdminChatRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin-only AI chat endpoint for the admin panel assistant."""
+    # Build messages list
+    history = body.conversation_history[-20:]
+    messages = [{"role": m.role, "content": m.content} for m in history]
+    messages.append({"role": "user", "content": body.message})
+
+    # Call LLM with admin system prompt
+    ai_response = await get_llm_response(
+        messages=messages,
+        system_prompt=ADMIN_SYSTEM_PROMPT,
+        max_tokens=600,
+    )
+
+    provider_status = get_provider_status()
+    active_provider = next(
+        (k for k, v in provider_status.items() if v), "unknown"
+    )
+
+    return {
+        "response": ai_response,
+        "provider_used": active_provider,
+    }
+
+
+@router.post("/extract-pdf")
+async def extract_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_student),
+):
+    """Extract text from an uploaded PDF file (max 5 MB)."""
+    MAX_SIZE = 5 * 1024 * 1024  # 5 MB
+    
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    
+    contents = await file.read()
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File size exceeds 5 MB limit.")
+    
+    try:
+        reader = PyPDF2.PdfReader(io.BytesIO(contents))
+        text_parts = []
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+        extracted_text = "\n".join(text_parts)
+        if not extracted_text.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="Could not extract text from this PDF. It may be image-based or encrypted."
+            )
+        return {"text": extracted_text, "pages": len(reader.pages), "filename": file.filename}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF extraction failed: {str(e)}")
+
+
 @router.get("/subjects")
-def get_subjects(current_user: User = Depends(get_current_user)):
-    """Return the list of supported MCA subjects with metadata."""
-    return SUBJECTS
+def get_subjects(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Return the list of supported MCA subjects with database IDs and metadata."""
+    db_subjects = db.query(Subject).filter(Subject.is_archived == False).all()
+    subjects_map = {s["code"].lower(): s for s in SUBJECTS}
+    
+    result = []
+    for sub in db_subjects:
+        static_meta = subjects_map.get(sub.code.lower(), {})
+        result.append({
+            "id": str(sub.id),
+            "code": sub.code,
+            "name": sub.name,
+            "color": sub.color or static_meta.get("color", "#3B82F6"),
+            "icon": sub.icon or static_meta.get("icon", "BookOpen"),
+            "topics": static_meta.get("topics", [])
+        })
+    return result
 
 
 @router.get("/history")

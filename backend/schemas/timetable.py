@@ -8,6 +8,8 @@ class TimetableCreate(BaseModel):
     start_time: str
     end_time: str
     room: Optional[str] = None
+    course_id: Optional[uuid.UUID] = None
+    semester_number: Optional[int] = None
 
 class TimetableOut(BaseModel):
     id: uuid.UUID
@@ -18,6 +20,8 @@ class TimetableOut(BaseModel):
     start_time: str
     end_time: str
     room: Optional[str] = None
+    course_id: Optional[uuid.UUID] = None
+    semester_number: Optional[int] = None
 
     class Config:
         from_attributes = True

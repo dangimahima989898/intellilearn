@@ -30,6 +30,8 @@ from routers import (
     daily_challenge as daily_challenge_router,
     doubts as doubts_router,
     notifications as notifications_router,
+    courses as courses_router,
+    onboarding as onboarding_router,
 )
 
 app = FastAPI(
@@ -46,6 +48,11 @@ app.add_middleware(
     allow_origins=[
         os.getenv("FRONTEND_URL", "http://localhost:5173"),
         "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
         "http://localhost:3000",
         "https://your-vercel-app.vercel.app" # placeholder for actual
     ],
@@ -71,6 +78,10 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # ── Include Routers ────────────────────────────────────────────────────────────
 app.include_router(auth_router.router)
+app.include_router(onboarding_router.router, prefix="/api")
+
+app.include_router(courses_router.router)
+app.include_router(courses_router.admin_router)
 app.include_router(subjects_router.router, prefix="/subjects", tags=["Subjects"])
 app.include_router(notes_router.router, prefix="/notes", tags=["Notes"])
 app.include_router(timetable_router.router, prefix="/timetable", tags=["Timetable"])
@@ -82,6 +93,19 @@ app.include_router(adaptive_quiz_router.router)
 app.include_router(daily_challenge_router.router)
 app.include_router(doubts_router.router)
 app.include_router(notifications_router.router)
+
+
+@app.on_event("startup")
+def startup_event():
+    from routers.subjects import purge_expired_subjects
+    db = SessionLocal()
+    try:
+        purge_expired_subjects(db)
+        logger.info("Purged expired archived subjects successfully on startup.")
+    except Exception as e:
+        logger.error(f"Error purging expired archived subjects on startup: {e}")
+    finally:
+        db.close()
 
 
 # ── Core routes ────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Integer, String, ForeignKey, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -20,8 +20,24 @@ class User(Base):
     streak_count = Column(Integer, default=0)
     last_active_date = Column(Date, nullable=True)
 
+    # Course & Semester columns
+    course_id        = Column(UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True)
+    current_semester = Column(Integer, default=1)          # 1 to 6
+    enrollment_no    = Column(String(30), unique=True, nullable=True)
+    roll_number      = Column(String(20), nullable=True)
+    section          = Column(String(5),  nullable=True)   # "A" or "B"
+    cgpa             = Column(Float,      default=0.0)
+    phone            = Column(String(15), nullable=True)
+    dob              = Column(Date,       nullable=True)
+    profile_photo_url = Column(String(500), nullable=True)
+    admission_year   = Column(Integer,    nullable=True)
+    must_change_password = Column(Boolean, default=False, nullable=False)
+    branch           = Column(String(100), nullable=True)
+
     # Relationships
+    course = relationship("Course", back_populates="students")
     notes = relationship("Note", back_populates="uploader")
     quiz_attempts = relationship("QuizAttempt", back_populates="student")
     doubts = relationship("Doubt", back_populates="student")
     notifications = relationship("Notification", back_populates="user")
+

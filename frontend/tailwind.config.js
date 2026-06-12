@@ -5,10 +5,11 @@ export default {
     extend: {
       colors: {
         navy: {
-          900: '#0F172A',
-          800: '#1E293B',
-          700: '#334155',
-          600: '#475569',
+          900: 'var(--bg-navy-900)',
+          800: 'var(--bg-navy-800)',
+          700: 'var(--bg-navy-700)',
+          600: 'var(--bg-navy-600)',
+          950: 'var(--bg-navy-950)',
         },
         brand: {
           DEFAULT: '#3B82F6',

@@ -1,13 +1,19 @@
 import { useState, useEffect } from 'react'
-import { FileText, Download, Eye, SearchX, Sparkles, X } from 'lucide-react'
+import { FileText, Download, Eye, SearchX, Sparkles, X, Presentation } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
 import studentService from '../../services/studentService'
 import toast from 'react-hot-toast'
+import PageWrapper from '../../components/PageWrapper'
+import SubjectBadge from '../../components/SubjectBadge'
 
 export default function StudentNotesPage() {
+  const { user } = useAuth()
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const [notes, setNotes] = useState([])
   const [subjects, setSubjects] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('all')
   const [summarizingId, setSummarizingId] = useState(null)
   const [activeSummaryNote, setActiveSummaryNote] = useState(null)
 
@@ -17,8 +23,8 @@ export default function StudentNotesPage() {
         studentService.getNotes(),
         studentService.getSubjects()
       ])
-      setNotes(notesData)
-      setSubjects(subjectsData)
+      setNotes(notesData || [])
+      setSubjects(subjectsData || [])
     } catch (error) {
       toast.error('Failed to load notes')
     } finally {
@@ -30,9 +36,7 @@ export default function StudentNotesPage() {
     fetchData()
   }, [])
 
-  const filteredNotes = selectedSubjectFilter === 'all' 
-    ? notes 
-    : notes.filter(n => n.subject_id === selectedSubjectFilter)
+  const filteredNotes = notes
 
   const handleDownload = async (id, filename) => {
     try {
@@ -44,7 +48,6 @@ export default function StudentNotesPage() {
       document.body.appendChild(link)
       link.click()
       link.parentNode.removeChild(link)
-      // Refresh to update download count
       fetchData()
     } catch (error) {
       toast.error('Download failed')
@@ -56,16 +59,11 @@ export default function StudentNotesPage() {
     try {
       const data = await studentService.summarizeNote(id)
       toast.success('Summary generated successfully! 🤖')
-      
-      // Update local notes state
       setNotes(prev => prev.map(note => note.id === id ? { ...note, summary: data.summary } : note))
-      
-      // Find updated note and set it as active summary for display
       const currentNote = notes.find(n => n.id === id)
       if (currentNote) {
         setActiveSummaryNote({ ...currentNote, summary: data.summary })
       } else {
-        // Fallback fetch if not found immediately
         fetchData()
       }
     } catch (error) {
@@ -75,7 +73,6 @@ export default function StudentNotesPage() {
     }
   }
 
-  // Parse and render basic markdown layout safely in React
   const renderFormattedSummary = (text) => {
     if (!text) return null
     const lines = text.split('\n')
@@ -83,175 +80,215 @@ export default function StudentNotesPage() {
       const trimmed = line.trim()
       if (trimmed.startsWith('##')) {
         return (
-          <h4 key={idx} className="text-base font-bold text-white mt-4 mb-2 first:mt-0 font-outfit border-b border-navy-700 pb-1">
+          <h2 key={idx} className={`font-outfit font-semibold text-lg mb-2 mt-4 first:mt-0 pb-1 border-b ${
+            isLight ? 'text-slate-800 border-slate-200' : 'text-white border-white/5'
+          }`}>
             {trimmed.replace(/^##\s*/, '')}
-          </h4>
+          </h2>
         )
       }
       if (trimmed.startsWith('-') || trimmed.startsWith('*')) {
         return (
-          <li key={idx} className="text-navy-300 text-sm list-disc list-inside ml-2 mb-1.5 leading-relaxed">
-            {trimmed.replace(/^[-*]\s*/, '')}
-          </li>
+          <div key={idx} className={`text-sm flex items-start gap-2 mb-2 ml-2 leading-relaxed ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 shrink-0" />
+            <span>{trimmed.replace(/^[-*]\s*/, '')}</span>
+          </div>
         )
       }
       const matchOrdered = trimmed.match(/^(\d+)\.\s*(.*)/)
       if (matchOrdered) {
         return (
-          <div key={idx} className="text-navy-300 text-sm ml-2 mb-2 leading-relaxed flex items-start gap-2">
-            <span className="text-brand font-bold shrink-0">{matchOrdered[1]}.</span>
+          <div key={idx} className={`text-sm flex items-start gap-2 mb-2 ml-2 leading-relaxed ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
+            <span className="text-blue-500 font-bold shrink-0">{matchOrdered[1]}.</span>
             <span>{matchOrdered[2]}</span>
           </div>
         )
       }
-      if (trimmed === '') {
-        return <div key={idx} className="h-2" />
-      }
+      if (trimmed === '') return <div key={idx} className="h-2" />
       return (
-        <p key={idx} className="text-navy-300 text-sm leading-relaxed mb-2">
+        <p key={idx} className={`text-sm leading-relaxed mb-3 ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
           {trimmed}
         </p>
       )
     })
   }
 
-  const getBadgeColor = (type) => {
+  const getFileIconColors = (type) => {
     const t = type.toLowerCase()
-    if (t === 'pdf') return 'bg-red-500/10 text-red-500 border-red-500/20'
-    if (t === 'docx' || t === 'doc') return 'bg-blue-500/10 text-blue-500 border-blue-500/20'
-    if (t.includes('ppt')) return 'bg-orange-500/10 text-orange-500 border-orange-500/20'
-    return 'bg-navy-700 text-white border-navy-600'
+    if (t.includes('pdf')) return { bg: isLight ? 'bg-red-50 text-red-600 border-red-200' : 'bg-red-500/10 text-red-500 border-red-500/20', icon: FileText }
+    if (t.includes('doc')) return { bg: isLight ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-blue-500/10 text-blue-500 border-blue-500/20', icon: FileText }
+    if (t.includes('ppt')) return { bg: isLight ? 'bg-orange-50 text-orange-600 border-orange-200' : 'bg-orange-500/10 text-orange-500 border-orange-500/20', icon: Presentation }
+    return { bg: isLight ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-white/5 text-white/50 border-white/10', icon: FileText }
   }
 
-  if (loading) return <div className="p-8 text-center text-navy-400">Loading study materials...</div>
+  const getSubjectColor = (id) => {
+    const sub = subjects.find(s => s.id === id)
+    return sub?.color || '#3B82F6'
+  }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-outfit font-bold text-white mb-2">My Notes</h1>
-        <p className="text-navy-400 text-sm">Access lecture slides, assignments, and study materials.</p>
+    <PageWrapper>
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div>
+          <h1 className={`text-3xl font-outfit font-extrabold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+            {user?.course_code ? `${user.course_code} Semester ${user.current_semester} — Study Materials` : "My Notes"}
+          </h1>
+          <div className="flex items-center gap-2 mt-2">
+            <span className={`text-xs px-3 py-1 rounded-full font-bold border ${
+              isLight ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-blue-500/10 border-blue-500/20 text-blue-300'
+            }`}>
+              Showing notes for {user?.course_code || 'MCA'} Sem {user?.current_semester || 4} · {filteredNotes.length} files
+            </span>
+          </div>
+        </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-        <button
-          onClick={() => setSelectedSubjectFilter('all')}
-          className={`whitespace-nowrap px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${selectedSubjectFilter === 'all' ? 'bg-brand border-brand text-white shadow-lg shadow-brand/20' : 'bg-navy-900 border-navy-800 text-navy-400 hover:bg-navy-800'}`}
-        >
-          All Subjects
-        </button>
-        {subjects.map(sub => (
-          <button
-            key={sub.id}
-            onClick={() => setSelectedSubjectFilter(sub.id)}
-            className={`whitespace-nowrap px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${selectedSubjectFilter === sub.id ? 'bg-brand border-brand text-white shadow-lg shadow-brand/20' : 'bg-navy-900 border-navy-800 text-navy-400 hover:bg-navy-800'}`}
-          >
-            {sub.name}
-          </button>
-        ))}
-      </div>
-
-      {filteredNotes.length === 0 ? (
-        <div className="card bg-navy-800/50 border border-navy-700 border-dashed rounded-2xl p-12 text-center">
-          <SearchX className="w-10 h-10 text-navy-500 mx-auto mb-3" />
-          <p className="text-navy-400 text-sm">No notes available for this subject yet.</p>
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+          {[1,2,3].map(i => (
+            <div key={i} className={`h-56 border rounded-2xl ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-white/5 border-white/10'}`} />
+          ))}
+        </div>
+      ) : filteredNotes.length === 0 ? (
+        <div className={`border rounded-2xl p-12 text-center max-w-md mx-auto shadow-2xl ${
+          isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
+        }`}>
+          <SearchX className={`w-12 h-12 mx-auto mb-4 ${isLight ? 'text-slate-300' : 'text-white/20'}`} />
+          <h3 className={`font-bold text-lg ${isLight ? 'text-slate-700' : 'text-white'}`}>No notes found</h3>
+          <p className={`text-sm mt-1 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>No study materials uploaded for this filter yet.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredNotes.map(note => (
-            <div key={note.id} className="card bg-navy-800 border border-navy-700 rounded-2xl p-5 hover:border-navy-500 transition-colors group flex flex-col">
-              <div className="flex items-start justify-between mb-4">
-                <div className={`p-3 rounded-xl border ${getBadgeColor(note.file_type)}`}>
-                  <FileText className="w-6 h-6" />
-                </div>
-                <span className="px-2 py-1 text-[10px] font-bold uppercase rounded-md bg-navy-900 text-navy-400 border border-navy-700">
-                  {(note.file_size_kb / 1024).toFixed(2)} MB
-                </span>
-              </div>
-              
-              <div className="flex-1 min-h-[80px]">
-                <h3 className="font-outfit font-bold text-white text-lg leading-tight mb-2 line-clamp-2">{note.title}</h3>
-                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-navy-900 text-brand border border-brand/20 mb-2">
-                  {note.subject_name}
-                </span>
-                <p className="text-navy-400 text-xs mt-1">Uploaded {new Date(note.created_at).toLocaleDateString()}</p>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredNotes.map(note => {
+            const fileStyle = getFileIconColors(note.file_type)
+            const FileIcon = fileStyle.icon
 
-              <div className="pt-4 mt-2 border-t border-navy-700 flex gap-2">
-                <button 
-                  onClick={() => handleDownload(note.id, `${note.title}.${note.file_type.toLowerCase()}`)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-brand/10 hover:bg-brand hover:text-white text-brand transition-colors text-sm font-semibold border border-brand/20 hover:border-brand"
-                >
-                  <Download className="w-4 h-4" /> Download
-                </button>
-                {note.summary ? (
-                  <button 
-                    onClick={() => setActiveSummaryNote(note)}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-brand/10 hover:bg-brand hover:text-white text-brand transition-colors text-sm font-semibold border border-brand/20 hover:border-brand"
-                    title="View AI Summary"
-                  >
-                    <Eye className="w-4 h-4" /> View Summary
-                  </button>
-                ) : (
-                  <button 
-                    disabled={summarizingId === note.id}
-                    onClick={() => handleGenerateSummary(note.id)}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-600 hover:text-white text-emerald-400 border border-emerald-500/20 hover:border-emerald-650 transition-colors text-sm font-semibold disabled:opacity-50"
-                    title="Generate AI Summary"
-                  >
-                    {summarizingId === note.id ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Summarizing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" /> AI Summary
-                      </>
-                    )}
-                  </button>
-                )}
+            return (
+              <div 
+                key={note.id} 
+                className={`border rounded-2xl p-5 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between ${
+                  isLight 
+                    ? 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-md shadow-sm' 
+                    : 'bg-white/5 border-white/10 hover:border-blue-500/30'
+                }`}
+              >
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border ${fileStyle.bg}`}>
+                      <FileIcon className="w-6 h-6" />
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                      isLight ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-white/5 text-white/50 border-white/5'
+                    }`}>
+                      {(note.file_size_kb / 1024).toFixed(2)} MB
+                    </span>
+                  </div>
+
+                  <h3 className={`font-bold text-md font-outfit line-clamp-2 min-h-[44px] ${isLight ? 'text-slate-800' : 'text-white'}`} title={note.title}>
+                    {note.title}
+                  </h3>
+                  
+                  <div className="mt-2">
+                    <SubjectBadge name={note.subject_name} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className={`mt-4 pt-3 border-t flex items-center justify-between text-[11px] font-semibold uppercase ${
+                    isLight ? 'border-slate-100 text-slate-400' : 'border-white/10 text-white/40'
+                  }`}>
+                    <span>{new Date(note.created_at).toLocaleDateString()}</span>
+                    <span>↓ {note.download_count || 0}</span>
+                  </div>
+
+                  <div className="flex gap-2 mt-4 pt-2">
+                    <button 
+                      onClick={() => setActiveSummaryNote(note)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                        isLight 
+                          ? 'border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-700'
+                          : 'border-teal-500/25 bg-teal-500/5 hover:bg-teal-500/10 text-teal-400'
+                      }`}
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Summary
+                    </button>
+                    <button 
+                      onClick={() => handleDownload(note.id, `${note.title}.${note.file_type.toLowerCase()}`)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                        isLight 
+                          ? 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700'
+                          : 'border-blue-500/25 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400'
+                      }`}
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
       {/* ── VIEW SUMMARY MODAL ── */}
       {activeSummaryNote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-navy-800 border border-navy-700 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-scale-up">
+          <div className={`border rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl p-6 relative ${
+            isLight ? 'bg-white border-slate-200' : 'bg-[#0F172A] border-white/10'
+          }`}>
+            
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-5 border-b border-navy-700 bg-navy-900/50">
-              <div className="flex items-center gap-2 text-brand">
-                <Sparkles className="w-5 h-5" />
-                <h3 className="font-outfit font-bold text-white text-lg line-clamp-1">AI Note Summary</h3>
+            <div className={`flex justify-between items-center mb-6 border-b pb-4 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+              <div className="min-w-0">
+                <h3 className={`font-outfit font-extrabold text-lg truncate pr-6 ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeSummaryNote.title}</h3>
+                <div className="mt-1">
+                  <SubjectBadge name={activeSummaryNote.subject_name} />
+                </div>
               </div>
               <button 
                 onClick={() => setActiveSummaryNote(null)}
-                className="p-1 rounded-lg hover:bg-navy-800 text-navy-400 hover:text-white transition-colors"
+                className={`transition-colors cursor-pointer shrink-0 ${isLight ? 'text-slate-400 hover:text-slate-700' : 'text-white/50 hover:text-white'}`}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            {/* Modal Content */}
-            <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4 custom-scrollbar">
-              <div>
-                <h4 className="text-white font-bold text-base leading-tight mb-1">{activeSummaryNote.title}</h4>
-                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-navy-900 text-brand border border-brand/20">
-                  {activeSummaryNote.subject_name}
-                </span>
-              </div>
-              <div className="bg-navy-900/40 border border-navy-750 p-4 rounded-2xl space-y-2">
-                {renderFormattedSummary(activeSummaryNote.summary)}
-              </div>
+            {/* Summary content */}
+            <div className="overflow-y-auto max-h-[60vh] pr-2 scrollbar-thin">
+              {activeSummaryNote.summary ? (
+                <div className={`border p-5 rounded-2xl ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/3 border-white/5'}`}>
+                  {renderFormattedSummary(activeSummaryNote.summary)}
+                </div>
+              ) : summarizingId === activeSummaryNote.id ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className={`text-sm font-semibold animate-pulse ${isLight ? 'text-slate-500' : 'text-white/60'}`}>🤖 AI is reading your notes...</p>
+                </div>
+              ) : (
+                <div className="text-center py-16">
+                  <Sparkles className="w-12 h-12 text-blue-400 mx-auto mb-4 animate-pulse" />
+                  <h4 className={`font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>Generate Note Summary</h4>
+                  <p className={`text-xs mt-1 px-8 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Let the AI scan this document to build a summary for quick revision.</p>
+                  
+                  <button
+                    onClick={() => handleGenerateSummary(activeSummaryNote.id)}
+                    className="mt-6 inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm px-6 py-2.5 rounded-xl shadow-lg shadow-blue-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  >
+                    <Sparkles className="w-4 h-4" /> Generate AI Summary
+                  </button>
+                </div>
+              )}
             </div>
-            
-            {/* Modal Footer */}
-            <div className="p-4 bg-navy-900/30 border-t border-navy-750 flex justify-end">
-              <button 
+
+            <div className={`flex justify-end pt-6 mt-4 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+              <button
                 onClick={() => setActiveSummaryNote(null)}
-                className="px-5 py-2 rounded-xl bg-brand text-white hover:opacity-90 transition-opacity text-sm font-bold"
+                className={`px-5 py-2.5 border font-bold rounded-xl text-xs transition-colors cursor-pointer ${
+                  isLight 
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                }`}
               >
                 Close Summary
               </button>
@@ -259,6 +296,6 @@ export default function StudentNotesPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageWrapper>
   )
 }

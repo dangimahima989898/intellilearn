@@ -7,6 +7,7 @@ from models.subject import Subject
 from models.user import User
 from schemas.note import NoteOut
 from utils.dependencies import get_current_user, require_admin, require_student
+from utils.semester_filter import apply_semester_filter
 from utils.llm_client import get_llm_response
 from PyPDF2 import PdfReader
 import uuid
@@ -17,6 +18,7 @@ from utils.firebase import send_to_all_students
 
 router = APIRouter()
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 MAX_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "10")) * 1024 * 1024
 ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.ppt', '.pptx'}
 
@@ -28,6 +30,8 @@ async def upload_note(
     title: str = Form(...),
     subject_id: uuid.UUID = Form(...),
     file: UploadFile = File(...),
+    course_id: uuid.UUID = Form(None),
+    semester_number: int = Form(None),
     db: Session = Depends(get_db),
     current_user = Depends(require_admin)
 ):
@@ -59,9 +63,11 @@ async def upload_note(
         uploaded_by=current_user.id,
         title=title,
         file_url=f"/uploads/{unique_filename}",
-        file_type=ext[1:].upper(),
+        file_type=ext[1:].lower(),
         file_size_kb=file_size // 1024,
-        download_count=0
+        download_count=0,
+        course_id=course_id,
+        semester_number=semester_number
     )
     db.add(new_note)
     db.commit()
@@ -81,11 +87,29 @@ async def upload_note(
     }
 
 @router.get("/", response_model=list[NoteOut])
-def get_notes(subject_id: uuid.UUID = None, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def get_notes(
+    subject_id: uuid.UUID = None,
+    course_id: uuid.UUID = None,
+    semester: int = None,
+    include_archived: bool = False,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
     query = db.query(Note, Subject.name.label("subject_name"), User.name.label("uploaded_by_name"))\
               .join(Subject, Note.subject_id == Subject.id)\
               .join(User, Note.uploaded_by == User.id)
               
+    if not include_archived:
+        query = query.filter(Subject.is_archived == False)
+              
+    if current_user.role == "student":
+        query = apply_semester_filter(query, Note, current_user)
+    else:
+        if course_id:
+            query = query.filter(Note.course_id == course_id)
+        if semester:
+            query = query.filter(Note.semester_number == semester)
+
     if subject_id:
         query = query.filter(Note.subject_id == subject_id)
         
@@ -105,7 +129,7 @@ def get_note(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depend
     result = db.query(Note, Subject.name.label("subject_name"), User.name.label("uploaded_by_name"))\
                .join(Subject, Note.subject_id == Subject.id)\
                .join(User, Note.uploaded_by == User.id)\
-               .filter(Note.id == id).first()
+               .filter(Note.id == id, Subject.is_archived == False).first()
                
     if not result:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -119,7 +143,7 @@ def get_note(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depend
 
 @router.get("/download/{id}")
 def download_note(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    note = db.query(Note).filter(Note.id == id).first()
+    note = db.query(Note).join(Subject).filter(Note.id == id, Subject.is_archived == False).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
         

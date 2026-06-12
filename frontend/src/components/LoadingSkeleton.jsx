@@ -1,42 +1,58 @@
 import React from 'react';
 
-// CSS for shimmer effect
-const shimmerBase = "relative overflow-hidden bg-navy-800 before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.5s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent";
+/**
+ * Loading Skeleton Components
+ * 
+ * Usage examples:
+ * // {loading ? <CardSkeleton /> : <ActualCard />}
+ * // {loading ? <TableRowSkeleton /> : <ActualRow />}
+ * // {loading ? <TextSkeleton width="w-32" height="h-5" /> : <ActualText />}
+ * // {loading ? <ChartSkeleton /> : <ActualChart />}
+ */
 
+// CardSkeleton: glass card shape, h-40, .skeleton class
 export function CardSkeleton() {
   return (
-    <div className={`rounded-3xl p-6 border border-navy-700 ${shimmerBase}`}>
-      <div className="flex justify-between items-start mb-6">
-        <div className="w-12 h-12 rounded-2xl bg-navy-700/50" />
-        <div className="w-20 h-8 rounded-full bg-navy-700/50" />
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 h-40 flex flex-col justify-between relative overflow-hidden">
+      <div className="skeleton w-12 h-12 rounded-xl" />
+      <div className="space-y-3">
+        <div className="skeleton w-3/4 h-5 rounded-lg" />
+        <div className="skeleton w-1/2 h-4 rounded-lg" />
       </div>
-      <div className="w-3/4 h-6 rounded-lg bg-navy-700/50 mb-4" />
-      <div className="w-1/2 h-4 rounded-lg bg-navy-700/50" />
     </div>
   );
 }
 
+// TableRowSkeleton: h-14 with 4 column-width divs inside, .skeleton
 export function TableRowSkeleton() {
   return (
-    <div className={`w-full h-16 rounded-xl mb-4 ${shimmerBase}`} />
+    <div className="h-14 border-b border-white/5 flex items-center justify-between px-6 gap-6 w-full">
+      <div className="skeleton w-1/4 h-5 rounded-lg" />
+      <div className="skeleton w-1/6 h-5 rounded-lg" />
+      <div className="skeleton w-1/5 h-5 rounded-lg" />
+      <div className="skeleton w-1/12 h-5 rounded-lg" />
+    </div>
   );
 }
 
-export function TextSkeleton({ className = "w-full h-4" }) {
+// TextSkeleton: props: width ("w-48"), height ("h-4"), + .skeleton class rounded-lg
+export function TextSkeleton({ width = "w-48", height = "h-4" }) {
   return (
-    <div className={`rounded flex-shrink-0 ${className} ${shimmerBase}`} />
+    <div className={`skeleton rounded-lg ${width} ${height}`} />
   );
 }
 
+// ChartSkeleton: h-48 glass card with .skeleton
 export function ChartSkeleton() {
   return (
-    <div className={`w-full h-64 rounded-xl flex items-end justify-between p-4 ${shimmerBase}`}>
-      <div className="w-[10%] h-[30%] bg-navy-700/50 rounded-t" />
-      <div className="w-[10%] h-[50%] bg-navy-700/50 rounded-t" />
-      <div className="w-[10%] h-[70%] bg-navy-700/50 rounded-t" />
-      <div className="w-[10%] h-[40%] bg-navy-700/50 rounded-t" />
-      <div className="w-[10%] h-[80%] bg-navy-700/50 rounded-t" />
-      <div className="w-[10%] h-[60%] bg-navy-700/50 rounded-t" />
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 h-48 flex items-end justify-between gap-3 relative overflow-hidden w-full">
+      <div className="skeleton w-[10%] h-[35%] rounded-t-md" />
+      <div className="skeleton w-[10%] h-[60%] rounded-t-md" />
+      <div className="skeleton w-[10%] h-[40%] rounded-t-md" />
+      <div className="skeleton w-[10%] h-[80%] rounded-t-md" />
+      <div className="skeleton w-[10%] h-[50%] rounded-t-md" />
+      <div className="skeleton w-[10%] h-[70%] rounded-t-md" />
+      <div className="skeleton w-[10%] h-[30%] rounded-t-md" />
     </div>
   );
 }

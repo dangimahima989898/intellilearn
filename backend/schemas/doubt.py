@@ -26,6 +26,7 @@ class DoubtOut(BaseModel):
     answer_count: int
     created_at: datetime
     accepted_answer_id: Optional[UUID] = None
+    current_user_upvoted: bool = False
 
     class Config:
         from_attributes = True
@@ -46,6 +47,7 @@ class DoubtAnswerOut(BaseModel):
     answer_text: str
     upvotes: int
     is_accepted: bool
+    is_verified_by_admin: bool = False
     created_at: datetime
     current_user_upvoted: bool = False
 

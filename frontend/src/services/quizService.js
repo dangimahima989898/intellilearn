@@ -1,48 +1,29 @@
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
-};
+import api from './api';
 
 const quizService = {
   startQuiz: async (subjectId, topic) => {
-    const response = await axios.post(
-      `${API_URL}/adaptive-quiz/start`,
-      { subject_id: subjectId, topic },
-      getAuthHeaders()
-    );
+    const response = await api.post('/adaptive-quiz/start', {
+      subject_id: subjectId,
+      topic,
+    });
     return response.data;
   },
 
   submitQuiz: async (attemptId, answers) => {
-    const response = await axios.post(
-      `${API_URL}/adaptive-quiz/submit`,
-      { attempt_id: attemptId, answers },
-      getAuthHeaders()
-    );
+    const response = await api.post('/adaptive-quiz/submit', {
+      attempt_id: attemptId,
+      answers,
+    });
     return response.data;
   },
 
   getHistory: async () => {
-    const response = await axios.get(
-      `${API_URL}/adaptive-quiz/history`,
-      getAuthHeaders()
-    );
+    const response = await api.get('/adaptive-quiz/history');
     return response.data;
   },
 
   getWeakAreas: async () => {
-    const response = await axios.get(
-      `${API_URL}/adaptive-quiz/weak-areas`,
-      getAuthHeaders()
-    );
+    const response = await api.get('/adaptive-quiz/weak-areas');
     return response.data;
   },
 };

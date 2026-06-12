@@ -1,64 +1,55 @@
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
-};
+import api from './api';
 
 const doubtService = {
   getDoubts: async (filters = {}) => {
-    const params = new URLSearchParams();
-    if (filters.subject_id) params.append('subject_id', filters.subject_id);
-    if (filters.is_resolved !== undefined) params.append('is_resolved', filters.is_resolved);
-    
-    const response = await axios.get(`${API_URL}/doubts/?${params.toString()}`, getAuthHeaders());
+    const params = {};
+    if (filters.subject_id) params.subject_id = filters.subject_id;
+    if (filters.is_resolved !== undefined && filters.is_resolved !== null) {
+      params.is_resolved = filters.is_resolved;
+    }
+    const response = await api.get('/doubts/', { params });
     return response.data;
   },
 
   getDoubt: async (id) => {
-    const response = await axios.get(`${API_URL}/doubts/${id}`, getAuthHeaders());
+    const response = await api.get(`/doubts/${id}`);
     return response.data;
   },
 
   createDoubt: async (subjectId, questionText) => {
-    const response = await axios.post(
-      `${API_URL}/doubts/`,
-      { subject_id: subjectId, question_text: questionText },
-      getAuthHeaders()
-    );
+    const response = await api.post('/doubts/', {
+      subject_id: subjectId,
+      question_text: questionText,
+    });
     return response.data;
   },
 
   answerDoubt: async (doubtId, answerText) => {
-    const response = await axios.post(
-      `${API_URL}/doubts/${doubtId}/answers`,
-      { answer_text: answerText },
-      getAuthHeaders()
-    );
+    const response = await api.post(`/doubts/${doubtId}/answers`, {
+      answer_text: answerText,
+    });
     return response.data;
   },
 
   upvoteAnswer: async (answerId) => {
-    const response = await axios.post(
-      `${API_URL}/doubts/answers/${answerId}/upvote`,
-      {},
-      getAuthHeaders()
-    );
+    const response = await api.post(`/doubts/answers/${answerId}/upvote`);
+    return response.data;
+  },
+
+  upvoteDoubt: async (doubtId) => {
+    const response = await api.post(`/doubts/${doubtId}/upvote`);
     return response.data;
   },
 
   resolveDoubt: async (doubtId, acceptedAnswerId) => {
-    const response = await axios.put(
-      `${API_URL}/doubts/${doubtId}/resolve?accepted_answer_id=${acceptedAnswerId}`,
-       {}, 
-       getAuthHeaders()
-    );
+    const response = await api.put(`/doubts/${doubtId}/resolve`, {}, {
+      params: { accepted_answer_id: acceptedAnswerId },
+    });
+    return response.data;
+  },
+
+  toggleAnswerVerification: async (answerId) => {
+    const response = await api.put(`/doubts/answers/${answerId}/verify`);
     return response.data;
   },
 };
