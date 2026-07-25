@@ -42,8 +42,8 @@ export default function AdminLoginPage() {
     setLoading(true)
     try {
       const data = await login(email, password)
-      if (data.role !== "admin") {
-        throw new Error("This portal is only for administrators. Students please use the Student Portal.")
+      if (data.role === "student") {
+        throw new Error("This portal is only for administrators and faculty. Students please use the Student Portal.")
       }
       toast.success(`Welcome back, administrator ${data.name}!`)
       navigate("/admin")
@@ -57,13 +57,13 @@ export default function AdminLoginPage() {
   }
 
   const fillDemo = () => {
-    setEmail("admin@intellilearn.com")
-    setPassword("admin123")
+    setEmail("hod@intellilearn.edu")
+    setPassword("hod123")
     toast.success("Demo administrator credentials loaded!")
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0F1E] font-dm text-white flex relative overflow-hidden">
+    <div className="min-h-[100dvh] bg-[#0A0F1E] font-dm text-white flex relative overflow-hidden">
       {/* Floating Theme Toggle */}
       <button
         onClick={toggleTheme}

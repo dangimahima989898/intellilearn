@@ -10,7 +10,7 @@ class ChallengeSubmission(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     challenge_id = Column(UUID(as_uuid=True), ForeignKey("daily_challenges.id"), nullable=False)
-    student_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     selected_answer = Column(
         Enum("a", "b", "c", "d", name="submission_answer_enum"), nullable=True
     )

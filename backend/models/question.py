@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -12,6 +12,7 @@ class Question(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False)
     topic = Column(String(200), nullable=False)
+    unit = Column(String(100), nullable=True) # e.g. "Unit 1", "Unit 2"
     question_text = Column(Text, nullable=False)
     option_a = Column(String(500), nullable=False)
     option_b = Column(String(500), nullable=False)
@@ -24,6 +25,8 @@ class Question(Base):
     difficulty = Column(
         Enum("easy", "medium", "hard", name="difficulty_enum"), nullable=False
     )
+    estimated_time_seconds = Column(Integer, default=30, nullable=False)
+    bloom_taxonomy_level = Column(String(100), default="Understand", nullable=False) # Remember, Understand, Apply, Analyze
     generated_by_ai = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

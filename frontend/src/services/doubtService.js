@@ -7,6 +7,8 @@ const doubtService = {
     if (filters.is_resolved !== undefined && filters.is_resolved !== null) {
       params.is_resolved = filters.is_resolved;
     }
+    if (filters.page) params.page = filters.page;
+    if (filters.size) params.size = filters.size;
     const response = await api.get('/doubts/', { params });
     return response.data;
   },
@@ -48,8 +50,20 @@ const doubtService = {
     return response.data;
   },
 
+  resolveDoubtAdmin: async (doubtId) => {
+    const response = await api.put(`/doubts/${doubtId}/admin-resolve`);
+    return response.data;
+  },
+
   toggleAnswerVerification: async (answerId) => {
     const response = await api.put(`/doubts/answers/${answerId}/verify`);
+    return response.data;
+  },
+
+  flagAnswer: async (answerId, flagReason) => {
+    const response = await api.post(`/doubts/answers/${answerId}/flag`, {
+      flag_reason: flagReason,
+    });
     return response.data;
   },
 };

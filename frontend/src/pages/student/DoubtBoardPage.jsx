@@ -7,7 +7,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import doubtService from "../../services/doubtService";
-import { getSubjects } from "../../services/chatbotService";
+import studentService from "../../services/studentService";
 import PageWrapper from "../../components/PageWrapper";
 import SubjectBadge from "../../components/SubjectBadge";
 import { statusBadge, subjectColors } from "../../utils/badgeColors";
@@ -34,19 +34,53 @@ export default function DoubtBoardPage() {
     loadData();
   }, [filter]);
 
+  useEffect(() => {
+    const handleWsMessage = (e) => {
+      const { type, doubt, doubt_id } = e.detail || {};
+      if (type === "doubt_created") {
+        if (filter.subject_id && doubt.subject_id !== filter.subject_id) return;
+        if (filter.is_resolved !== null && doubt.is_resolved !== filter.is_resolved) return;
+        
+        setDoubts(prev => {
+          if (prev.some(d => d.id === doubt.id)) return prev;
+          return [doubt, ...prev];
+        });
+      } else if (type === "doubt_resolved") {
+        setDoubts(prev => prev.map(d => 
+          d.id === doubt.id 
+            ? { ...d, is_resolved: true, accepted_answer_id: doubt.accepted_answer_id } 
+            : d
+        ));
+      } else if (type === "doubt_answered") {
+        setDoubts(prev => prev.map(d => 
+          d.id === doubt_id 
+            ? { ...d, answer_count: (d.answer_count || 0) + 1 } 
+            : d
+        ));
+      }
+    };
+
+    window.addEventListener("ws-message", handleWsMessage);
+    return () => window.removeEventListener("ws-message", handleWsMessage);
+  }, [filter]);
+
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [doubtsData, subjectsData] = await Promise.all([
-        doubtService.getDoubts(filter),
-        getSubjects()
-      ]);
+      const doubtsData = await doubtService.getDoubts(filter);
       setDoubts(doubtsData || []);
-      setSubjects(subjectsData || []);
     } catch (err) {
       setError("Failed to load doubts. Check your API connection.");
-      toast.error("Failed to load doubt board.");
+      toast.error("Failed to load doubts.");
+    }
+
+    try {
+      const subjectsData = await studentService.getSubjects();
+      setSubjects(subjectsData || []);
+    } catch (err) {
+      toast.error("Failed to load subjects.");
+      setSubjects([]);
     } finally {
       setLoading(false);
     }
@@ -75,7 +109,7 @@ export default function DoubtBoardPage() {
 
   const handleCreateDoubt = async (e) => {
     e.preventDefault();
-    if (newDoubt.question_text.length < 20) {
+    if (newDoubt.question_text.trim().length < 20) {
       toast.error("Please provide more detail (min 20 characters)");
       return;
     }
@@ -332,10 +366,20 @@ export default function DoubtBoardPage() {
                       required
                       value={newDoubt.subject_id}
                       onChange={(e) => setNewDoubt(prev => ({ ...prev, subject_id: e.target.value }))}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all appearance-none cursor-pointer"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all appearance-none cursor-pointer"
                     >
-                      <option value="" className="bg-[#0e1424]">Choose a subject...</option>
-                      {subjects.map(s => <option key={s.id} value={s.id} className="bg-[#0e1424]">{s.name} ({s.code})</option>)}
+                      {subjects.length === 0 ? (
+                        <option value="" className="bg-[#0e1424]">No subjects available</option>
+                      ) : (
+                        <>
+                          <option value="" className="bg-[#0e1424]">Choose a subject...</option>
+                          {subjects.map(s => (
+                            <option key={s.id} value={s.id} className="bg-[#0e1424]">
+                              {s.name} ({s.code})
+                            </option>
+                          ))}
+                        </>
+                      )}
                     </select>
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-white/30 text-xs">▼</div>
                   </div>
@@ -370,7 +414,7 @@ export default function DoubtBoardPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting || !newDoubt.subject_id || newDoubt.question_text.length < 20}
+                    disabled={isSubmitting || !newDoubt.subject_id || newDoubt.question_text.trim().length < 20}
                     className="flex-1 py-3.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-extrabold text-sm shadow-xl shadow-blue-500/20 transition-all active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
                     {isSubmitting ? (

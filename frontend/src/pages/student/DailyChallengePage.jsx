@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { 
   Trophy, Calendar, Award, CheckCircle2, XCircle, 
   Timer, BarChart3, TrendingUp, Sparkles, Medal, Star, Flame, ChevronRight
@@ -19,7 +20,16 @@ const MedalIcon = ({ rank }) => {
 export default function DailyChallengePage() {
   const { theme } = useTheme();
   const isLight = theme === 'light';
-  const [mode, setMode] = useState("challenge"); // challenge | history
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mode = searchParams.get("mode") === "history" ? "history" : "challenge";
+  
+  const setMode = (newMode) => {
+    setSearchParams(prev => {
+      prev.set("mode", newMode);
+      return prev;
+    });
+  };
+
   const [challenge, setChallenge] = useState(null);
   const [alreadySubmitted, setAlreadySubmitted] = useState(false);
   const [submission, setSubmission] = useState(null);
@@ -56,24 +66,40 @@ export default function DailyChallengePage() {
     let active = true;
     const loadData = async () => {
       setLoading(true);
+
+      // Load Today's Challenge
       try {
-        const [chalData, lbData, histData] = await Promise.all([
-          dailyChallengeService.getTodayChallenge(),
-          dailyChallengeService.getLeaderboard(),
-          dailyChallengeService.getMyHistory()
-        ]);
-        if (!active) return;
-        setChallenge(chalData.challenge);
-        setAlreadySubmitted(chalData.already_submitted);
-        setSubmission(chalData.submission);
-        setLeaderboard(lbData || []);
-        setHistory(histData || []);
+        const chalData = await dailyChallengeService.getTodayChallenge();
+        if (active) {
+          setChallenge(chalData?.challenge);
+          setAlreadySubmitted(!!chalData?.already_submitted);
+          setSubmission(chalData?.submission);
+        }
       } catch (err) {
-        if (!active) return;
-        toast.error("Failed to load today's challenge.", { id: "load_challenge_data" });
-      } finally {
-        if (active) setLoading(false);
+        console.error("Failed to load today's challenge:", err);
       }
+
+      // Load Leaderboard
+      try {
+        const lbData = await dailyChallengeService.getLeaderboard();
+        if (active) {
+          setLeaderboard(lbData || []);
+        }
+      } catch (err) {
+        console.error("Failed to load leaderboard:", err);
+      }
+
+      // Load History
+      try {
+        const histData = await dailyChallengeService.getMyHistory();
+        if (active) {
+          setHistory(histData || []);
+        }
+      } catch (err) {
+        console.error("Failed to load history:", err);
+      }
+
+      if (active) setLoading(false);
     };
 
     loadData();
@@ -250,7 +276,7 @@ export default function DailyChallengePage() {
                   </div>
                   <div>
                     <h4 className={`text-lg font-extrabold font-outfit ${isCorrect ? "text-emerald-400" : "text-red-400"}`}>
-                      {isCorrect ? "Phenomenal! +10 Points Added" : "Not quite! +3 Practice Points Awarded"}
+                      {isCorrect ? "Phenomenal! +10 Points Added" : "Not quite! 0 Points Awarded"}
                     </h4>
                     <p className="text-white/60 text-xs mt-0.5">Thanks for taking today's AI challenge!</p>
                   </div>
@@ -333,17 +359,25 @@ export default function DailyChallengePage() {
   const renderHistory = () => {
     // Generate calendar grid for current month
     const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const validHistory = history.filter(h => {
+      const challengeDate = new Date(h.challenge_date);
+      const chalDay = new Date(challengeDate.getFullYear(), challengeDate.getMonth(), challengeDate.getDate());
+      return chalDay <= startOfToday;
+    });
+
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    const historyMap = history.reduce((acc, h) => {
+    const historyMap = validHistory.reduce((acc, h) => {
       acc[new Date(h.challenge_date).getDate()] = h;
       return acc;
     }, {});
 
     const stats = {
-      attempted: history.length,
-      correct: history.filter(h => h.is_correct).length,
-      points: history.reduce((acc, h) => acc + h.score_earned, 0),
-      accuracy: history.length > 0 ? (history.filter(h => h.is_correct).length / history.length * 100).toFixed(0) : 0
+      attempted: validHistory.length,
+      correct: validHistory.filter(h => h.is_correct).length,
+      points: validHistory.reduce((acc, h) => acc + h.score_earned, 0),
+      accuracy: validHistory.length > 0 ? (validHistory.filter(h => h.is_correct).length / validHistory.length * 100).toFixed(0) : 0
     };
 
     return (
@@ -391,28 +425,36 @@ export default function DailyChallengePage() {
               const h = historyMap[day];
               const isToday = day === today.getDate();
 
-              let cellStyle = "bg-white/5 border-white/10 text-white/40 hover:bg-white/10";
+              const isFuture = day > today.getDate();
+              let cellStyle = "bg-white/5 border-white/10 text-white/40 hover:bg-white/10 cursor-help";
               let statusIcon = null;
+              let tooltip = "";
 
-              if (h) {
+              if (isFuture) {
+                cellStyle = "bg-white/2 border-white/5 text-white/20 cursor-default select-none";
+                tooltip = "Upcoming Challenge";
+              } else if (h) {
                 if (h.is_correct) {
-                  cellStyle = "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20";
+                  cellStyle = "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20 cursor-help";
                   statusIcon = <CheckCircle2 className="w-3.5 h-3.5" />;
                 } else {
-                  cellStyle = "bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500/20";
+                  cellStyle = "bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500/20 cursor-help";
                   statusIcon = <XCircle className="w-3.5 h-3.5" />;
                 }
+                tooltip = `${h.subject}: ${h.is_correct ? "Correct" : "Incorrect"}`;
               } else if (isToday) {
-                cellStyle = "border-blue-500 ring-2 ring-blue-500/25 bg-blue-500/10 text-white hover:bg-blue-500/20";
-              } else if (day < today.getDate()) {
-                cellStyle = "bg-white/2 border-white/5 text-white/20";
+                cellStyle = "border-blue-500 ring-2 ring-blue-500/25 bg-blue-500/10 text-white hover:bg-blue-500/20 cursor-help";
+                tooltip = "Today's Challenge";
+              } else {
+                cellStyle = "bg-white/2 border-white/5 text-white/20 cursor-help";
+                tooltip = "Missed / Untouched";
               }
 
               return (
                 <div 
                   key={day} 
-                  className={`aspect-square rounded-xl border flex flex-col items-center justify-center relative cursor-help transition-all duration-200 group/cell ${cellStyle}`}
-                  title={h ? `${h.subject}: ${h.is_correct ? "Correct" : "Incorrect"}` : ""}
+                  className={`aspect-square rounded-xl border flex flex-col items-center justify-center relative transition-all duration-200 group/cell ${cellStyle}`}
+                  title={tooltip}
                 >
                   <span className="text-xs md:text-sm font-black">{day}</span>
                   <div className="absolute bottom-1.5 md:bottom-2">
@@ -449,10 +491,10 @@ export default function DailyChallengePage() {
            </div>
            
            <div className="divide-y divide-white/5">
-             {history.length === 0 ? (
+             {validHistory.length === 0 ? (
                <div className="p-12 text-center text-white/40 font-medium">Your historical breakdown is empty. Start attempting today!</div>
              ) : (
-               history.map((h, i) => (
+               validHistory.map((h, i) => (
                   <div key={i} className="p-6 flex items-center justify-between group hover:bg-white/3 transition-all duration-200">
                     <div className="flex items-center gap-4">
                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg border transition-all duration-300 ${

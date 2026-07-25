@@ -20,6 +20,46 @@ export default function AdminDoubtDetailPage() {
     loadDoubt();
   }, [id]);
 
+  useEffect(() => {
+    const handleWsMessage = (e) => {
+      const { type, doubt, doubt_id, answer } = e.detail || {};
+      if (type === "doubt_answered" && doubt_id === id) {
+        setData(prev => {
+          if (!prev) return prev;
+          if (prev.answers.some(a => a.id === answer.id)) return prev;
+          return {
+            ...prev,
+            doubt: {
+              ...prev.doubt,
+              answer_count: (prev.doubt.answer_count || 0) + 1
+            },
+            answers: [...prev.answers, answer]
+          };
+        });
+      } else if (type === "doubt_resolved" && doubt?.id === id) {
+        setData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            doubt: {
+              ...prev.doubt,
+              is_resolved: true,
+              accepted_answer_id: doubt.accepted_answer_id
+            },
+            answers: prev.answers.map(a => 
+              a.id === doubt.accepted_answer_id 
+                ? { ...a, is_accepted: true } 
+                : a
+            )
+          };
+        });
+      }
+    };
+
+    window.addEventListener("ws-message", handleWsMessage);
+    return () => window.removeEventListener("ws-message", handleWsMessage);
+  }, [id]);
+
   const loadDoubt = async () => {
     setLoading(true);
     try {

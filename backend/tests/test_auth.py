@@ -1,20 +1,41 @@
 import pytest
 from fastapi.testclient import TestClient
 import uuid
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from main import app
-from database import Base, engine, SessionLocal
+from database import Base, get_db, get_db_sync
 from models import *
+
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test_auth.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Create a test setup
 @pytest.fixture(scope="module")
-def client():
-    # Use SQLite for testing or connect to a separate test DB.
-    # Currently it uses existing engine which might connect to production.
-    # For a real project, override the database dependency to use a test DB.
+def db_session():
     Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=engine)
+
+@pytest.fixture(scope="module")
+def client(db_session):
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_sync] = override_get_db
     with TestClient(app) as c:
         yield c
+    app.dependency_overrides.clear()
 
 def test_register_new_user(client):
     suffix = str(uuid.uuid4())[:8]
@@ -22,20 +43,20 @@ def test_register_new_user(client):
         "name": "Test Admin",
         "email": f"testuser_{suffix}@test.com",
         "password": "password123",
-        "role": "admin"
+        "role": "super_admin"
     })
     
     assert response.status_code == 201
     data = response.json()
     assert "access_token" in data
-    assert data["role"] == "admin"
+    assert data["role"] == "super_admin"
     assert data["name"] == "Test Admin"
 
 def test_register_duplicate_email(client):
     suffix = str(uuid.uuid4())[:8]
     email = f"dup_{suffix}@test.com"
-    client.post("/auth/register", json={"name":"Alice","email":email,"password":"pass123","role":"admin"})
-    response = client.post("/auth/register", json={"name":"Bob","email":email,"password":"pass123","role":"admin"})
+    client.post("/auth/register", json={"name":"Alice","email":email,"password":"pass123","role":"super_admin"})
+    response = client.post("/auth/register", json={"name":"Bob","email":email,"password":"pass123","role":"super_admin"})
     
     assert response.status_code == 409
     assert "already exists" in response.json()["detail"]
@@ -43,7 +64,7 @@ def test_register_duplicate_email(client):
 def test_login_correct_credentials(client):
     suffix = str(uuid.uuid4())[:8]
     email = f"login_{suffix}@test.com"
-    client.post("/auth/register", json={"name":"Login Test","email":email,"password":"mypassword","role":"admin"})
+    client.post("/auth/register", json={"name":"Login Test","email":email,"password":"mypassword","role":"super_admin"})
     
     response = client.post("/auth/login", json={"email":email,"password":"mypassword"})
     assert response.status_code == 200
@@ -52,7 +73,7 @@ def test_login_correct_credentials(client):
 def test_login_wrong_password(client):
     suffix = str(uuid.uuid4())[:8]
     email = f"wrong_{suffix}@test.com"
-    client.post("/auth/register", json={"name":"Wrong Pass","email":email,"password":"correct","role":"admin"})
+    client.post("/auth/register", json={"name":"Wrong Pass","email":email,"password":"correct","role":"super_admin"})
     
     response = client.post("/auth/login", json={"email":email,"password":"wrong"})
     assert response.status_code == 401
@@ -60,7 +81,7 @@ def test_login_wrong_password(client):
 def test_get_me_with_valid_token(client):
     suffix = str(uuid.uuid4())[:8]
     email = f"me_{suffix}@test.com"
-    reg = client.post("/auth/register", json={"name":"Me Test","email":email,"password":"pass123","role":"admin"})
+    reg = client.post("/auth/register", json={"name":"Me Test","email":email,"password":"pass123","role":"super_admin"})
     token = reg.json()["access_token"]
     
     response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})

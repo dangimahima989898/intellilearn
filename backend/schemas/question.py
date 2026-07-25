@@ -45,3 +45,4 @@ class GenerateResponse(BaseModel):
     subject: str
     topic: str
     difficulty: str
+    warning: Optional[str] = None

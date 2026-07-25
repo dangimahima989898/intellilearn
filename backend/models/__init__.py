@@ -2,6 +2,7 @@
 from .course import Course
 from .user import User
 from .subject import Subject
+from .department import Department
 from .note import Note
 from .question import Question
 from .quiz_attempt import QuizAttempt
@@ -18,5 +19,26 @@ from .notification import Notification
 from .chat_log import ChatLog
 from .rate_limit import RateLimit
 from .enrolled_student import EnrolledStudent
+from .semester import Semester
+from .faculty_subject_assignment import FacultySubjectAssignment
+from .student_enrollment import StudentEnrollment
+from .audit_log import AuditLog, StudentApprovalLog
 from .student_access_request import StudentAccessRequest
 from .content_chunks import ContentChunk
+from .flagged_answer import FlaggedAnswer
+from .student_performance_summary import StudentPerformanceSummary
+from .uploaded_note import UploadedNote
+from .note_summary import NoteSummary
+from .summary_version import SummaryVersion
+from .summary_feedback import SummaryFeedback
+from .summary_review_log import SummaryReviewLog
+from .student_activity_log import StudentActivityLog
+from .daily_active_users import DailyActiveUsers
+from .admin_action_log import AdminActionLog
+from .faculty_leave_request import FacultyLeaveRequest
+from .faculty_availability import FacultyAvailability
+from .timetable_substitution import TimetableSubstitution
+from .archived_item import ArchivedItem
+from .exam_schedule import ExamSchedule
+from .ai_answer_report import AIAnswerReport
+from .placement_test import PlacementTest, TestQuestion, TestAttempt, AttemptAnswer

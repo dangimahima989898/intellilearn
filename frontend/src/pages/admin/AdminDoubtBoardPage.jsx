@@ -18,26 +18,107 @@ export default function AdminDoubtBoardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState({ subject_id: null, is_resolved: null });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [resolvingId, setResolvingId] = useState(null);
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
-    loadData();
+    setPage(1);
+    setDoubts([]);
+    setHasMore(true);
+    loadData(1, true);
   }, [filter]);
 
-  const loadData = async () => {
-    setLoading(true);
+  useEffect(() => {
+    const handleWsMessage = (e) => {
+      const { type, doubt, doubt_id } = e.detail || {};
+      if (type === "doubt_created") {
+        if (filter.subject_id && doubt.subject_id !== filter.subject_id) return;
+        if (filter.is_resolved !== null && doubt.is_resolved !== filter.is_resolved) return;
+        
+        setDoubts(prev => {
+          if (prev.some(d => d.id === doubt.id)) return prev;
+          return [doubt, ...prev];
+        });
+      } else if (type === "doubt_resolved") {
+        setDoubts(prev => prev.map(d => 
+          d.id === doubt.id 
+            ? { ...d, is_resolved: true, accepted_answer_id: doubt.accepted_answer_id } 
+            : d
+        ));
+      } else if (type === "doubt_answered") {
+        setDoubts(prev => prev.map(d => 
+          d.id === doubt_id 
+            ? { ...d, answer_count: (d.answer_count || 0) + 1 } 
+            : d
+        ));
+      }
+    };
+
+    window.addEventListener("ws-message", handleWsMessage);
+    return () => window.removeEventListener("ws-message", handleWsMessage);
+  }, [filter]);
+
+  const loadData = async (pageNum = 1, reset = false) => {
+    if (pageNum === 1) setLoading(true);
+    else setLoadingMore(true);
     setError(null);
     try {
-      const [doubtsData, subjectsData] = await Promise.all([
-        doubtService.getDoubts(filter),
-        getSubjects()
+      const [doubtsRes, subjectsRes] = await Promise.allSettled([
+        doubtService.getDoubts({ ...filter, page: pageNum, size: PAGE_SIZE }),
+        pageNum === 1 ? getSubjects() : Promise.resolve(subjects)
       ]);
-      setDoubts(doubtsData || []);
-      setSubjects(subjectsData || []);
+      const newDoubts = doubtsRes.status === 'fulfilled' ? (doubtsRes.value || []) : [];
+      if (pageNum === 1) {
+        setSubjects(subjectsRes.status === 'fulfilled' ? (subjectsRes.value || []) : subjects);
+      }
+      
+      if (reset || pageNum === 1) {
+        setDoubts(newDoubts);
+      } else {
+        setDoubts(prev => [...prev, ...newDoubts]);
+      }
+      setHasMore(newDoubts.length >= PAGE_SIZE);
+      setPage(pageNum);
+      
+      if (doubtsRes.status === 'rejected') {
+        console.warn('Doubt board loading failed:', doubtsRes.reason?.message);
+        setError("Failed to load doubts. Check your API connection.");
+      }
     } catch (err) {
-      setError("Failed to load doubts. Check your API connection.");
-      toast.error("Failed to load doubt board.");
+      console.error(err);
+      setError("Failed to load doubts.");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const handleLoadMore = () => {
+    if (!loadingMore && hasMore) {
+      loadData(page + 1, false);
+    }
+  };
+
+  const handleResolveDoubt = async (doubtId) => {
+    if (resolvingId) return;
+    const doubt = doubts.find(d => d.id === doubtId);
+    if (doubt?.is_resolved) {
+      toast.error("This doubt is already resolved.");
+      return;
+    }
+    setResolvingId(doubtId);
+    try {
+      await doubtService.resolveDoubtAdmin(doubtId);
+      setDoubts(prev => prev.map(d => d.id === doubtId ? { ...d, is_resolved: true } : d));
+      toast.success("Doubt marked as resolved.");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Failed to resolve doubt.");
+    } finally {
+      setResolvingId(null);
     }
   };
 
@@ -77,6 +158,19 @@ export default function AdminDoubtBoardPage() {
 
       {/* Filters Bar */}
       <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-wrap items-center gap-4">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search doubts or students..."
+            className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500 transition"
+          />
+        </div>
+
+        <div className="h-8 w-px bg-white/10 hidden md:block" />
+
         <div className="flex bg-white/5 rounded-xl border border-white/10 p-1">
           <button 
             onClick={() => setFilter(prev => ({ ...prev, is_resolved: null }))}
@@ -140,7 +234,15 @@ export default function AdminDoubtBoardPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {doubts.map((doubt) => (
+          {doubts
+            .filter(doubt => {
+              if (!searchQuery.trim()) return true;
+              const q = searchQuery.toLowerCase();
+              return doubt.question_text.toLowerCase().includes(q) ||
+                     doubt.student_name.toLowerCase().includes(q) ||
+                     doubt.subject_name.toLowerCase().includes(q);
+            })
+            .map((doubt) => (
             <div 
               key={doubt.id}
               onClick={() => navigate(`/admin/doubts/${doubt.id}`)}
@@ -151,18 +253,30 @@ export default function AdminDoubtBoardPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-start">
                   <SubjectBadge name={doubt.subject_name} />
-                  {doubt.is_resolved && (
-                    <div 
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-black uppercase border"
-                      style={{
-                        background: statusBadge('resolved').bg,
-                        color: statusBadge('resolved').color,
-                        borderColor: `${statusBadge('resolved').color}30`
-                      }}
-                    >
-                      <CheckCircle2 className="w-3 h-3" style={{ color: statusBadge('resolved').color }} /> Resolved
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {doubt.is_resolved && (
+                      <div 
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-black uppercase border"
+                        style={{
+                          background: statusBadge('resolved').bg,
+                          color: statusBadge('resolved').color,
+                          borderColor: `${statusBadge('resolved').color}30`
+                        }}
+                      >
+                        <CheckCircle2 className="w-3 h-3" style={{ color: statusBadge('resolved').color }} /> Resolved
+                      </div>
+                    )}
+                    {!doubt.is_resolved && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleResolveDoubt(doubt.id); }}
+                        disabled={resolvingId === doubt.id}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        {resolvingId === doubt.id ? '...' : 'Resolve'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <h3 className="text-base font-bold text-white line-clamp-3 leading-snug group-hover:text-violet-300 transition-colors">
@@ -219,6 +333,19 @@ export default function AdminDoubtBoardPage() {
               <p className="text-white/50 font-semibold">No questions found.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Load More */}
+      {!loading && !error && hasMore && doubts.length > 0 && (
+        <div className="text-center pt-4">
+          <button
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className="px-6 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-white/10 text-xs font-bold transition-all disabled:opacity-50"
+          >
+            {loadingMore ? 'Loading...' : 'Load More Doubts'}
+          </button>
         </div>
       )}
     </div>

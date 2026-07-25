@@ -6,6 +6,7 @@ import {
 } from "lucide-react"
 import { getSubjects } from "../../services/chatbotService"
 import { generateQuestions, submitPractice } from "../../services/questionService"
+import quizService from "../../services/quizService"
 import toast from "react-hot-toast"
 import PageWrapper from "../../components/PageWrapper"
 import { useTheme } from "../../context/ThemeContext"
@@ -32,6 +33,8 @@ export default function QuestionGeneratorPage() {
   const [difficulty, setDifficulty] = useState("medium")
   const [count, setCount] = useState(5)
   const [loadingGenerate, setLoadingGenerate] = useState(false)
+  const [availableTopics, setAvailableTopics] = useState({})
+  const [topicsLoading, setTopicsLoading] = useState(false)
 
   // Practice State
   const [questions, setQuestions] = useState([])
@@ -41,6 +44,7 @@ export default function QuestionGeneratorPage() {
   const [isCurrentAnswerSubmitted, setIsCurrentAnswerSubmitted] = useState(false)
   const [activeResults, setActiveResults] = useState(null) 
   const [expandedReviewId, setExpandedReviewId] = useState(null)
+  const [questionWarning, setQuestionWarning] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -57,10 +61,42 @@ export default function QuestionGeneratorPage() {
   }, [])
 
   const handleSelectSubject = (sub) => {
+    // Immediately clear topics to prevent stale loading state
+    setAvailableTopics({})
+    setTopic("")
+    setTopicsLoading(true)
     setSelectedSubject(sub)
-    setTopic("") 
     setStep(2)
   }
+
+  // Fetch available topics when subject changes
+  useEffect(() => {
+    if (!selectedSubject) {
+      setAvailableTopics({})
+      setTopic("")
+      return
+    }
+    const fetchTopics = async () => {
+      setTopicsLoading(true)
+      try {
+        const data = await quizService.getTopics(selectedSubject.id)
+        if (data && Object.keys(data).length > 0) {
+          setAvailableTopics(data)
+        } else {
+          setAvailableTopics({
+            "Syllabus Topics": selectedSubject.topics || []
+          })
+        }
+      } catch (err) {
+        setAvailableTopics({
+          "Syllabus Topics": selectedSubject.topics || []
+        })
+      } finally {
+        setTopicsLoading(false)
+      }
+    }
+    fetchTopics()
+  }, [selectedSubject])
 
   const handleGenerate = async () => {
     if (!selectedSubject) {
@@ -75,6 +111,7 @@ export default function QuestionGeneratorPage() {
     }
 
     setLoadingGenerate(true)
+    setQuestionWarning(null)
     try {
       const data = await generateQuestions(selectedSubject.code, topic.trim(), difficulty, count)
       if (!data.questions || data.questions.length === 0) {
@@ -87,6 +124,9 @@ export default function QuestionGeneratorPage() {
       setIsCurrentAnswerSubmitted(false)
       setActiveResults(null)
       setMode("practice")
+      if (data.warning) {
+        setQuestionWarning(data.warning)
+      }
       toast.success(`Generated ${data.questions.length} questions successfully!`)
     } catch (err) {
       toast.error(err.message || "Failed to generate questions. Try again.")
@@ -266,30 +306,54 @@ export default function QuestionGeneratorPage() {
           {/* STEP 2: DEFINE THE TOPIC */}
           {step === 2 && (
             <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-              <h2 className={`text-xl font-bold text-center font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Step 2: Define the Topic</h2>
+              <h2 className={`text-xl font-bold text-center font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Step 2: Select a Topic</h2>
               <div className={`border rounded-2xl p-6 space-y-4 shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
-                <label className={`block text-sm font-semibold ${isLight ? 'text-slate-700' : 'text-white'}`}>Enter study topic details:</label>
-                <input
-                  type="text"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  placeholder="e.g. Binary Trees, SQL Joins, Deadlocks, OSI Model..."
-                  className="w-full bg-white/8 border border-white/15 rounded-xl px-4 py-3 text-white placeholder-white/25 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50 transition-all font-medium"
-                />
+                <label className={`block text-sm font-semibold ${isLight ? 'text-slate-700' : 'text-white'}`}>Choose a topic from uploaded syllabus:</label>
+                
+                {topicsLoading ? (
+                  <div className={`flex items-center gap-2 py-4 ${isLight ? 'text-slate-400' : 'text-white/50'}`}>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Loading topics for {selectedSubject?.name}...</span>
+                  </div>
+                ) : Object.keys(availableTopics).length === 0 ? (
+                  <div className={`py-6 text-center border border-dashed rounded-xl ${isLight ? 'bg-amber-50 border-amber-200' : 'bg-amber-500/5 border-amber-500/20'}`}>
+                    <p className="text-amber-500 text-sm font-semibold">No topics available for this subject.</p>
+                    <p className={`text-xs mt-1 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Ask your faculty to upload study materials first.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <select
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 transition-all font-medium ${
+                        isLight 
+                          ? "bg-slate-50 border-slate-200 text-slate-800 focus:border-violet-500 focus:ring-violet-500/50" 
+                          : "bg-white/5 border-white/15 text-white focus:border-violet-500 focus:ring-violet-500/50"
+                      }`}
+                    >
+                      <option value="">Select a topic...</option>
+                      {Object.entries(availableTopics)
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([unit, topics]) => (
+                          <optgroup key={unit} label={unit}>
+                            {topics.map((t) => (
+                              <option key={t} value={t}>{t}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                    </select>
 
-                {selectedSubject?.topics && (
-                  <div className="space-y-3 pt-2">
-                    <span className={`text-xs font-bold uppercase tracking-wide ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Suggested Syllabus Topics:</span>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedSubject.topics.map((t) => (
+                    {/* Quick topic chips */}
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {Object.values(availableTopics).flat().slice(0, 8).map((t) => (
                         <button
                           key={t}
                           type="button"
                           onClick={() => setTopic(t)}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
                             topic === t 
-                              ? "bg-violet-500/20 text-violet-300 border-violet-500/35 shadow-md shadow-violet-500/5" 
-                              : "bg-white/5 hover:bg-violet-500/15 border-white/10 text-white/60 hover:text-white"
+                              ? "bg-violet-500/20 border-violet-500/50 text-violet-300"
+                              : isLight ? "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200" : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
                           }`}
                         >
                           {t}
@@ -426,6 +490,14 @@ export default function QuestionGeneratorPage() {
       {/* ── PRACTICE MODE ── */}
       {mode === "practice" && questions.length > 0 && (
         <div className="max-w-2xl mx-auto space-y-6">
+          {/* Bank exhausted warning banner */}
+          {questionWarning && (
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400">
+              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              <p className="text-xs font-semibold leading-relaxed">{questionWarning}</p>
+            </div>
+          )}
+
           {/* Progress Bar */}
           <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
             <div 

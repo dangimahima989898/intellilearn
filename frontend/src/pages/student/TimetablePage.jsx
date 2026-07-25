@@ -75,62 +75,69 @@ export default function StudentTimetablePage() {
         <div className={`border rounded-2xl overflow-hidden shadow-2xl flex-1 flex flex-col min-h-0 backdrop-blur-xl ${
           isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
         }`}>
-          <div className="overflow-x-auto overflow-y-auto flex-1 p-6 custom-scrollbar" ref={containerRef}>
-            <div className="min-w-[1000px] h-full flex flex-col">
-              <div className="grid grid-cols-6 gap-4 flex-1">
-                {days.map(day => (
-                  <div key={day} className="flex flex-col gap-4">
-                    <div className={`py-3 text-center rounded-xl font-outfit font-extrabold uppercase tracking-wider text-xs shadow-md border transition-all ${
-                      day === todayName 
-                        ? 'bg-blue-500 border-blue-500 text-white shadow-lg shadow-blue-500/20' 
-                        : isLight 
-                          ? 'bg-slate-100 border-slate-200 text-slate-600'
-                          : 'bg-white/5 border-white/10 text-white/80'
-                    }`}>
-                      {day}
-                    </div>
-                    
-                    <div className={`flex flex-col gap-3 flex-1 rounded-xl p-2.5 border border-dashed transition-colors ${
-                      day === todayName 
-                        ? 'border-blue-500/35 bg-blue-500/5' 
-                        : isLight ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-white/3'
-                    }`}>
-                      {slots.filter(s => s.day_of_week === day)
-                        .sort((a, b) => a.start_time.localeCompare(b.start_time))
-                        .map(slot => (
+          <div className="overflow-x-auto overflow-y-auto flex-1 p-4 md:p-6" ref={containerRef} style={{ scrollbarWidth: 'thin' }}>
+            <div className="min-w-[900px]">
+              <div className="grid grid-cols-6 gap-3">
+                {days.map(day => {
+                  const daySlots = slots.filter(s => s.day_of_week === day).sort((a, b) => a.start_time.localeCompare(b.start_time))
+                  return (
+                    <div key={day} className="flex flex-col gap-3">
+                      {/* Day Header */}
+                      <div className={`py-2.5 px-2 text-center rounded-xl font-outfit font-bold uppercase tracking-wider text-[11px] border transition-all ${
+                        day === todayName 
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/25' 
+                          : isLight 
+                            ? 'bg-slate-50 border-slate-200 text-slate-600'
+                            : 'bg-white/[0.04] border-white/10 text-white/70'
+                      }`}>
+                        {day.substring(0, 3)}
+                        {day === todayName && <span className="ml-1 text-[9px] opacity-80">• Today</span>}
+                      </div>
+                      
+                      {/* Day Slots */}
+                      <div className={`flex flex-col gap-2 min-h-[200px] rounded-xl p-2 border border-dashed transition-colors ${
+                        day === todayName 
+                          ? isLight ? 'border-blue-300/50 bg-blue-50/50' : 'border-blue-500/30 bg-blue-500/[0.03]'
+                          : isLight ? 'border-slate-200 bg-slate-50/50' : 'border-white/5 bg-white/[0.015]'
+                      }`}>
+                        {daySlots.length > 0 ? daySlots.map(slot => (
                           <div 
                             key={slot.id} 
-                            className={`relative p-4 rounded-xl border shadow-lg hover:-translate-y-0.5 transition-transform ${
-                              isLight ? 'bg-white border-slate-200' : 'border-white/10 bg-[#0f172a]/40'
+                            className={`relative p-3 rounded-lg border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ${
+                              isLight ? 'bg-white border-slate-100' : 'border-white/[0.08] bg-[#0f172a]/60'
                             }`}
-                            style={{ borderLeft: `4px solid ${slot.subject_color || '#3B82F6'}` }}
+                            style={{ borderLeftWidth: '3px', borderLeftColor: slot.subject_color || '#3B82F6' }}
                           >
-                            <h4 className={`font-outfit font-extrabold text-sm mb-2 leading-snug ${isLight ? 'text-slate-800' : 'text-white'}`}>
+                            <h4 className={`font-outfit font-bold text-xs mb-1.5 leading-snug line-clamp-2 ${isLight ? 'text-slate-800' : 'text-white'}`}>
                               {slot.subject_name}
                             </h4>
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-[11px] font-bold" style={{ color: slot.subject_color || '#3B82F6' }}>
-                                <Clock className="w-3.5 h-3.5 shrink-0" />
-                                {slot.start_time} - {slot.end_time}
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: slot.subject_color || '#3B82F6' }}>
+                                <Clock className="w-3 h-3 shrink-0" />
+                                {slot.start_time} – {slot.end_time}
                               </div>
                               {slot.room && (
-                                <div className={`flex items-center gap-2 text-[11px] font-semibold uppercase ${isLight ? 'text-slate-400' : 'text-white/40'}`}>
-                                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                                  Room: {slot.room}
+                                <div className={`flex items-center gap-1.5 text-[10px] font-medium ${isLight ? 'text-slate-400' : 'text-white/35'}`}>
+                                  <MapPin className="w-3 h-3 shrink-0" />
+                                  {slot.room}
+                                </div>
+                              )}
+                              {slot.faculty_name && (
+                                <div className={`text-[9px] font-medium mt-1 ${isLight ? 'text-slate-350' : 'text-white/25'}`}>
+                                  {slot.faculty_name}
                                 </div>
                               )}
                             </div>
                           </div>
-                        ))}
-                        
-                      {slots.filter(s => s.day_of_week === day).length === 0 && (
-                        <div className="flex-1 flex items-center justify-center select-none py-10">
-                          <span className={`text-[10px] font-extrabold uppercase tracking-widest ${isLight ? 'text-slate-300' : 'text-white/20'}`}>Free</span>
-                        </div>
-                      )}
+                        )) : (
+                          <div className="flex-1 flex items-center justify-center select-none">
+                            <span className={`text-[9px] font-bold uppercase tracking-widest ${isLight ? 'text-slate-250' : 'text-white/15'}`}>No Class</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </div>

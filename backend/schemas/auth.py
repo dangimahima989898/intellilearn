@@ -43,8 +43,8 @@ class UserRegister(BaseModel):
     @field_validator("role")
     @classmethod
     def validate_role(cls, v):
-        if v not in ["admin", "student"]:
-            raise ValueError("Role must be admin or student")
+        if v not in ["admin", "student", "faculty", "hod", "super_admin"]:
+            raise ValueError("Invalid role")
         return v
 
 

@@ -5,11 +5,13 @@ import {
   BarChart, Bar, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts'
 import studentService from '../../services/studentService'
+import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
 import PageWrapper from '../../components/PageWrapper'
 
 export default function StudentProgressPage() {
+  const { user } = useAuth()
   const { theme } = useTheme()
   const isLight = theme === 'light'
   const [overview, setOverview] = useState(null)
@@ -62,23 +64,16 @@ export default function StudentProgressPage() {
     subject: h.subject_name
   }))
 
-  const radarData = [
-    { subject: "DSA", A: 85, fullMark: 100 },
-    { subject: "DBMS", A: 72, fullMark: 100 },
-    { subject: "OS", A: 68, fullMark: 100 },
-    { subject: "CN", A: 90, fullMark: 100 },
-    { subject: "Java", A: 75, fullMark: 100 },
-    { subject: "Python", A: 82, fullMark: 100 }
-  ]
+  const radarData = overview?.subjects_studied?.map(s => ({
+    subject: s.subject_name.substring(0, 10),
+    A: s.avg_score,
+    fullMark: 100
+  })) || []
 
   const chartSubjects = overview?.subjects_studied?.map(s => ({
     name: s.subject_name.substring(0, 10),
     percentage: s.avg_score,
-  })) || [
-    { name: "DSA", percentage: 85 }, { name: "DBMS", percentage: 72 },
-    { name: "OS", percentage: 68 }, { name: "CN", percentage: 90 },
-    { name: "Java", percentage: 75 }, { name: "Python", percentage: 82 }
-  ]
+  })) || []
 
   const milestones = [
     { id: 1, title: "First Quiz", desc: "First quiz taken", icon: BookOpen, color: "#3B82F6", achieved: overview?.total_quizzes > 0, req: "1 quiz done", count: overview?.total_quizzes || 0, max: 1 },
@@ -116,10 +111,10 @@ export default function StudentProgressPage() {
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total Quizzes", value: overview?.total_quizzes || 0, icon: BookOpen, color: "text-blue-500" },
-          { label: "Avg Score %", value: `${overview?.average_score || 0}%`, icon: Target, color: "text-teal-500" },
-          { label: "Current Streak", value: `${overview?.streak_count || 12} 🔥`, icon: Flame, color: "text-orange-500" },
-          { label: "Challenge Points", value: overview?.challenge_score || 120, icon: Trophy, color: "text-yellow-500" }
+          { label: "Total Quizzes", value: overview?.total_quizzes ?? 0, icon: BookOpen, color: "text-blue-500" },
+          { label: "Avg Score %", value: `${overview?.average_score ?? 0}%`, icon: Target, color: "text-teal-500" },
+          { label: "Current Streak", value: `${overview?.streak_count ?? 0} 🔥`, icon: Flame, color: "text-orange-500" },
+          { label: "Challenge Points", value: overview?.challenge_score ?? 0, icon: Trophy, color: "text-yellow-500" }
         ].map((stat, i) => (
           <div key={i} className={`border rounded-2xl p-5 shadow-lg flex flex-col justify-center ${
             isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
@@ -139,22 +134,29 @@ export default function StudentProgressPage() {
         {/* Score History */}
         <div className={`border rounded-2xl p-6 shadow-xl relative overflow-hidden ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
           <h3 className={`font-outfit font-bold mb-6 ${isLight ? 'text-slate-800' : 'text-white'}`}>Score History</h3>
-          <div className="h-52">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartHistory} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="scoreGlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={gridColor} vertical={false} />
-                <XAxis dataKey="name" stroke={axisColor} fontSize={10} tickLine={false} tick={{ fill: tickColor }} />
-                <YAxis stroke={axisColor} domain={[0, 100]} fontSize={10} tickLine={false} tick={{ fill: tickColor }} />
-                <Tooltip {...tooltipStyle} itemStyle={{ color: '#3B82F6' }} />
-                <Line type="monotone" dataKey="score" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4, strokeWidth: 1, fill: '#3B82F6' }} fill="url(#scoreGlow)" />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="h-52 flex justify-center items-center">
+            {chartHistory.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-3xl mb-2">📈</p>
+                <p className={`text-sm font-medium ${isLight ? 'text-slate-400' : 'text-white/40'}`}>No score history available yet</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartHistory} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="scoreGlow" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={gridColor} vertical={false} />
+                  <XAxis dataKey="name" stroke={axisColor} fontSize={10} tickLine={false} tick={{ fill: tickColor }} />
+                  <YAxis stroke={axisColor} domain={[0, 100]} fontSize={10} tickLine={false} tick={{ fill: tickColor }} />
+                  <Tooltip {...tooltipStyle} itemStyle={{ color: '#3B82F6' }} />
+                  <Line type="monotone" dataKey="score" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4, strokeWidth: 1, fill: '#3B82F6' }} fill="url(#scoreGlow)" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -162,14 +164,21 @@ export default function StudentProgressPage() {
         <div className={`border rounded-2xl p-6 shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
           <h3 className={`font-outfit font-bold mb-6 ${isLight ? 'text-slate-800' : 'text-white'}`}>Subject Radar</h3>
           <div className="h-52 flex justify-center items-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
-                <PolarGrid stroke={gridColor} />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: isLight ? '#64748b' : '#ffffff50', fontSize: 10, fontWeight: 'bold' }} />
-                <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                <Radar name="Score" dataKey="A" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.35} dot={{ r: 4, fill: '#3B82F6' }} />
-              </RadarChart>
-            </ResponsiveContainer>
+            {radarData.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-3xl mb-2">📡</p>
+                <p className={`text-sm font-medium ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Not enough data to display skills breakdown</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                  <PolarGrid stroke={gridColor} />
+                  <PolarAngleAxis dataKey="subject" tick={{ fill: isLight ? '#64748b' : '#ffffff50', fontSize: 10, fontWeight: 'bold' }} />
+                  <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+                  <Radar name="Score" dataKey="A" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.35} dot={{ r: 4, fill: '#3B82F6' }} />
+                </RadarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>
@@ -178,22 +187,31 @@ export default function StudentProgressPage() {
       <div className={`border rounded-2xl p-6 shadow-xl mb-6 ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
         <h3 className={`font-outfit font-bold mb-6 ${isLight ? 'text-slate-800' : 'text-white'}`}>Subject Breakdown</h3>
         <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartSubjects} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
-              <CartesianGrid stroke={gridColor} horizontal={false} />
-              <XAxis type="number" domain={[0, 100]} hide />
-              <YAxis dataKey="name" type="category" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} width={70} tick={{ fill: tickColor }} />
-              <Tooltip {...tooltipStyle} itemStyle={{ color: '#3B82F6' }} />
-              <Bar dataKey="percentage" radius={[0, 8, 8, 0]} barSize={16}>
-                {chartSubjects.map((entry, idx) => {
-                  let fill = "#EF4444"
-                  if (entry.percentage >= 70) fill = "#10B981"
-                  else if (entry.percentage >= 50) fill = "#F59E0B"
-                  return <Cell key={idx} fill={fill} />
-                })}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          {chartSubjects.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-center">
+              <div>
+                <p className="text-3xl mb-2">📊</p>
+                <p className={`text-sm font-medium ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Not enough data to display subject scores</p>
+              </div>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartSubjects} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
+                <CartesianGrid stroke={gridColor} horizontal={false} />
+                <XAxis type="number" domain={[0, 100]} hide />
+                <YAxis dataKey="name" type="category" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} width={70} tick={{ fill: tickColor }} />
+                <Tooltip {...tooltipStyle} itemStyle={{ color: '#3B82F6' }} />
+                <Bar dataKey="percentage" radius={[0, 8, 8, 0]} barSize={16}>
+                  {chartSubjects.map((entry, idx) => {
+                    let fill = "#EF4444"
+                    if (entry.percentage >= 70) fill = "#10B981"
+                    else if (entry.percentage >= 50) fill = "#F59E0B"
+                    return <Cell key={idx} fill={fill} />
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
@@ -254,55 +272,64 @@ export default function StudentProgressPage() {
           📊 Top Students This Month
         </h3>
         
-        {/* Top 3 Medals */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          {top3.map((student, idx) => {
-            const medals = ["🥇", "🥈", "🥉"]
-            const isSelf = student.name === "Mahima Dangi"
-            return (
-              <div 
-                key={student.name}
-                className={`rounded-2xl p-5 text-center flex flex-col items-center justify-center border ${
-                  isSelf
-                    ? isLight ? "bg-blue-50 border-blue-200" : "bg-blue-500/10 border-blue-500/30"
-                    : isLight ? "bg-slate-50 border-slate-200" : "bg-white/3 border-white/5"
-                }`}
-              >
-                <span className="text-3xl mb-1">{medals[idx]}</span>
-                <h4 className={`text-sm font-extrabold truncate max-w-full leading-tight ${isLight ? 'text-slate-800' : 'text-white'}`}>{student.name}</h4>
-                <p className={`text-[10px] mt-1 font-semibold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{student.total_quizzes} quizzes</p>
-                <div className={`mt-3.5 font-black text-lg leading-none ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>{student.avg_score}%</div>
-              </div>
-            )
-          })}
-        </div>
+        {leaderboard.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-3xl mb-2">🏆</p>
+            <p className={`text-sm font-medium ${isLight ? 'text-slate-400' : 'text-white/40'}`}>No standings recorded yet</p>
+          </div>
+        ) : (
+          <>
+            {/* Top 3 Medals */}
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              {top3.map((student, idx) => {
+                const medals = ["🥇", "🥈", "🥉"]
+                const isSelf = student.name === user?.name
+                return (
+                  <div 
+                    key={student.name}
+                    className={`rounded-2xl p-5 text-center flex flex-col items-center justify-center border ${
+                      isSelf
+                        ? isLight ? "bg-blue-50 border-blue-200" : "bg-blue-500/10 border-blue-500/30"
+                        : isLight ? "bg-slate-50 border-slate-200" : "bg-white/3 border-white/5"
+                    }`}
+                  >
+                    <span className="text-3xl mb-1">{medals[idx]}</span>
+                    <h4 className={`text-sm font-extrabold truncate max-w-full leading-tight ${isLight ? 'text-slate-800' : 'text-white'}`}>{student.name}</h4>
+                    <p className={`text-[10px] mt-1 font-semibold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{student.total_quizzes} quizzes</p>
+                    <div className={`mt-3.5 font-black text-lg leading-none ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>{student.avg_score}%</div>
+                  </div>
+                )
+              })}
+            </div>
 
-        {/* Rest of leaderboard */}
-        <div className="space-y-2">
-          {rest.map((student) => {
-            const isSelf = student.name === "Mahima Dangi"
-            return (
-              <div 
-                key={student.name}
-                className={`p-3.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${
-                  isSelf 
-                    ? isLight ? "bg-blue-50 border-blue-200" : "bg-blue-500/10 border-blue-500/20" 
-                    : isLight ? "bg-slate-50 border-slate-200" : "bg-white/3 border-white/5"
-                }`}
-              >
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className={`w-5 font-mono font-bold text-center ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{student.rank}</span>
-                  <span className={`font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>{student.name}</span>
-                </div>
-                <div className={`flex items-center gap-6 font-semibold uppercase tracking-wider text-[10px]`}>
-                  <span className={isLight ? 'text-slate-400' : 'text-white/40'}>{student.total_quizzes} quizzes</span>
-                  <span className="text-orange-500">🔥 {student.streak_count}</span>
-                  <span className={`font-extrabold ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>{student.avg_score}%</span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+            {/* Rest of leaderboard */}
+            <div className="space-y-2">
+              {rest.map((student) => {
+                const isSelf = student.name === user?.name
+                return (
+                  <div 
+                    key={student.name}
+                    className={`p-3.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                      isSelf 
+                        ? isLight ? "bg-blue-50 border-blue-200" : "bg-blue-500/10 border-blue-500/20" 
+                        : isLight ? "bg-slate-50 border-slate-200" : "bg-white/3 border-white/5"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`w-5 font-mono font-bold text-center ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{student.rank}</span>
+                      <span className={`font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>{student.name}</span>
+                    </div>
+                    <div className={`flex items-center gap-6 font-semibold uppercase tracking-wider text-[10px]`}>
+                      <span className={isLight ? 'text-slate-400' : 'text-white/40'}>{student.total_quizzes} quizzes</span>
+                      <span className="text-orange-500">🔥 {student.streak_count}</span>
+                      <span className={`font-extrabold ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>{student.avg_score}%</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
 
     </PageWrapper>

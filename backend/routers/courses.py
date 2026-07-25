@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from models.course import Course
-from utils.dependencies import get_current_user, require_admin
+from utils.dependencies import get_current_user, require_admin, require_hod_or_admin
 import uuid
 
 router = APIRouter(prefix="/courses", tags=["Courses"])
 
-@router.get("/")
+@router.get("")
 def list_courses(db: Session = Depends(get_db)):
     """Public — no auth needed. Used in registration dropdown."""
     courses = db.query(Course).filter(Course.is_active == True).all()
@@ -49,7 +49,7 @@ def count_students(
     course_id: str = None,
     semester: str = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(require_hod_or_admin)
 ):
     """Admin utility — count students in a course+semester."""
     from models.user import User
@@ -84,7 +84,7 @@ def list_students(
     section: str = None,
     search: str = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(require_hod_or_admin)
 ):
     from models.user import User
     query = db.query(User).filter(User.role == "student")
@@ -134,7 +134,7 @@ def list_students(
 def advance_semester(
     payload: AdvanceSemesterPayload,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(require_hod_or_admin)
 ):
     from models.user import User
     try:
@@ -158,7 +158,7 @@ def advance_semester(
 def delete_student(
     id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(require_hod_or_admin)
 ):
     from models.user import User
     from models.quiz_attempt import QuizAttempt

@@ -164,7 +164,7 @@ def submit_challenge(
 
     # 4. & 5. Scoring
     is_correct = (req.selected_answer.lower() == challenge.correct_answer.lower())
-    score_earned = 10 if is_correct else 3
+    score_earned = 10 if is_correct else 0
 
     # 6. Create record
     submission = ChallengeSubmission(
@@ -225,10 +225,12 @@ def get_my_history(
     current_user = Depends(require_student)
 ):
     # Last 30 submissions (approx 30 days)
+    today = date.today()
     submissions = db.query(ChallengeSubmission, DailyChallenge).join(
         DailyChallenge, ChallengeSubmission.challenge_id == DailyChallenge.id
     ).filter(
-        ChallengeSubmission.student_id == current_user.id
+        ChallengeSubmission.student_id == current_user.id,
+        DailyChallenge.challenge_date <= today
     ).order_by(desc(DailyChallenge.challenge_date)).limit(30).all()
 
     history = []

@@ -23,7 +23,7 @@ from schemas.onboarding import (
     ManualEnrollmentCreate,
     ChangePasswordRequest,
 )
-from utils.dependencies import get_current_user, require_admin
+from utils.dependencies import get_current_user, require_admin, require_hod_or_admin
 from utils.security import hash_password, verify_password
 from utils.email import send_email
 
@@ -199,7 +199,7 @@ def upload_students(
     file: UploadFile = File(...),
     preview: bool = Query(False),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     Uploads enrolled students from CSV or Excel. 
@@ -336,7 +336,7 @@ def get_enrolled_students(
     status: Optional[str] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     List enrolled students with search & filter.
@@ -364,7 +364,7 @@ def get_enrolled_students(
 def create_enrolled_student(
     student_data: ManualEnrollmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     Manually enroll a student.
@@ -400,7 +400,7 @@ def create_enrolled_student(
 def get_access_requests(
     status: Optional[str] = "pending",
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     List access requests by status.
@@ -416,7 +416,7 @@ def approve_access_request(
     id: uuid.UUID,
     review_data: AccessRequestReview,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     Approves a student's access request.
@@ -512,7 +512,7 @@ def reject_access_request(
     id: uuid.UUID,
     review_data: AccessRequestReview,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     Rejects a student's access request. Sends a rejection email.
@@ -559,7 +559,7 @@ def reject_access_request(
 def resend_credentials(
     id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     Resends credentials to an approved enrolled student or user.
@@ -615,7 +615,7 @@ def resend_credentials(
 def generate_credentials_for_enrolled(
     id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     Manually creates a User account and dispatches credentials for a pre-enrolled student.
@@ -682,7 +682,7 @@ def generate_credentials_for_enrolled(
 def delete_enrolled_student(
     id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_hod_or_admin)
 ):
     """
     Deletes a pre-authorized enrolled student record.

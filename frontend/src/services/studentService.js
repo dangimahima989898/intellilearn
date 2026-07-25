@@ -51,9 +51,12 @@ const studentService = {
     return response.data
   },
   
+  _cachedSubjects: null,
   // Configuration
   getSubjects: async () => {
+    if (studentService._cachedSubjects) return studentService._cachedSubjects
     const response = await api.get('/subjects')
+    studentService._cachedSubjects = response.data
     return response.data
   }
 }

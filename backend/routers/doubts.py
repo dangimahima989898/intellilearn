@@ -4,6 +4,7 @@ from sqlalchemy import func, desc, and_
 from typing import List, Optional
 import uuid
 from datetime import datetime
+import json
 
 from database import get_db
 from models.doubt import Doubt
@@ -12,13 +13,16 @@ from models.doubt_upvote import DoubtUpvote
 from models.doubt_question_upvote import DoubtQuestionUpvote
 from models.subject import Subject
 from models.user import User
-from utils.dependencies import require_student, get_current_user, require_admin
+from models.faculty_subject_assignment import FacultySubjectAssignment
+from models.notification import Notification
+from routers.notifications import manager
+from utils.dependencies import require_student, get_current_user, require_admin, require_role
 from schemas.doubt import DoubtCreate, DoubtOut, DoubtAnswerCreate, DoubtAnswerOut
 
 router = APIRouter(prefix="/doubts", tags=["Doubt Board"])
 
 @router.post("/", response_model=DoubtOut)
-def create_doubt(
+async def create_doubt(
     req: DoubtCreate,
     db: Session = Depends(get_db),
     current_user = Depends(require_student)
@@ -36,6 +40,68 @@ def create_doubt(
     db.add(new_doubt)
     db.commit()
     db.refresh(new_doubt)
+
+    # Find faculty members assigned to this subject
+    assignments = db.query(FacultySubjectAssignment).filter(
+        FacultySubjectAssignment.subject_id == req.subject_id,
+        FacultySubjectAssignment.approval_status == "approved"
+    ).all()
+
+    for assignment in assignments:
+        notif = Notification(
+            id=uuid.uuid4(),
+            recipient_user_id=assignment.faculty_id,
+            recipient_role="faculty",
+            title="New Doubt Raised",
+            message=json.dumps({
+                "message": f"Student {current_user.name} raised a doubt in {subject.name}: '{req.question_text[:50]}...'",
+                "student_name": current_user.name,
+                "subject": subject.name,
+                "doubt_title": req.question_text[:30],
+                "timestamp": datetime.utcnow().isoformat()
+            }),
+            module="doubts",
+            reference_id=new_doubt.id,
+            priority="Medium"
+        )
+        db.add(notif)
+        
+        # Real-time WebSocket delivery
+        try:
+            await manager.send_personal_message({
+                "type": "notification",
+                "notification": {
+                    "id": str(notif.id),
+                    "title": notif.title,
+                    "message": notif.message,
+                    "module": notif.module,
+                    "priority": notif.priority,
+                    "created_at": datetime.now().isoformat()
+                }
+            }, assignment.faculty_id)
+            
+            await manager.send_personal_message({
+                "type": "doubt_created",
+                "doubt": {
+                    "id": str(new_doubt.id),
+                    "student_id": str(new_doubt.student_id),
+                    "student_name": current_user.name,
+                    "subject_id": str(new_doubt.subject_id),
+                    "subject_name": subject.name,
+                    "question_text": new_doubt.question_text,
+                    "is_resolved": new_doubt.is_resolved,
+                    "vote_count": new_doubt.vote_count,
+                    "answer_count": 0,
+                    "created_at": datetime.now().isoformat(),
+                    "accepted_answer_id": None,
+                    "current_user_upvoted": False
+                }
+            }, assignment.faculty_id)
+        except Exception:
+            pass
+
+    if assignments:
+        db.commit()
 
     return DoubtOut(
         id=new_doubt.id,
@@ -166,7 +232,7 @@ def get_doubt_detail(
     }
 
 @router.post("/{doubt_id}/answers", response_model=DoubtAnswerOut)
-def answer_doubt(
+async def answer_doubt(
     doubt_id: uuid.UUID,
     req: DoubtAnswerCreate,
     db: Session = Depends(get_db),
@@ -185,6 +251,38 @@ def answer_doubt(
     db.add(new_answer)
     db.commit()
     db.refresh(new_answer)
+
+    # Broadcast answer to student
+    try:
+        answer_payload = {
+            "type": "doubt_answered",
+            "doubt_id": str(doubt_id),
+            "answer": {
+                "id": str(new_answer.id),
+                "doubt_id": str(new_answer.doubt_id),
+                "answered_by_id": str(new_answer.answered_by),
+                "answered_by_name": current_user.name,
+                "answer_text": new_answer.answer_text,
+                "upvotes": new_answer.upvotes,
+                "is_accepted": new_answer.is_accepted,
+                "is_verified_by_admin": False,
+                "created_at": datetime.now().isoformat(),
+                "current_user_upvoted": False
+            }
+        }
+        if doubt.student_id != current_user.id:
+            await manager.send_personal_message(answer_payload, doubt.student_id)
+            
+        # Broadcast to all assigned faculty members
+        assignments = db.query(FacultySubjectAssignment).filter(
+            FacultySubjectAssignment.subject_id == doubt.subject_id,
+            FacultySubjectAssignment.approval_status == "approved"
+        ).all()
+        for assignment in assignments:
+            if assignment.faculty_id != current_user.id:
+                await manager.send_personal_message(answer_payload, assignment.faculty_id)
+    except Exception:
+        pass
 
     return DoubtAnswerOut(
         id=new_answer.id,
@@ -270,7 +368,7 @@ def upvote_answer(
     return {"upvotes": answer.upvotes, "user_upvoted": user_upvoted}
 
 @router.put("/{doubt_id}/resolve", response_model=DoubtOut)
-def resolve_doubt(
+async def resolve_doubt(
     doubt_id: uuid.UUID,
     accepted_answer_id: uuid.UUID, # Pass directly in query or body
     db: Session = Depends(get_db),
@@ -282,6 +380,9 @@ def resolve_doubt(
     
     if doubt.student_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the author can resolve this doubt")
+
+    if doubt.is_resolved:
+        raise HTTPException(status_code=409, detail="This doubt is already resolved")
 
     answer = db.query(DoubtAnswer).filter(
         DoubtAnswer.id == accepted_answer_id,
@@ -298,6 +399,28 @@ def resolve_doubt(
     db.commit()
     db.refresh(doubt)
     
+    # Broadcast doubt resolved
+    try:
+        resolved_payload = {
+            "type": "doubt_resolved",
+            "doubt": {
+                "id": str(doubt.id),
+                "is_resolved": True,
+                "accepted_answer_id": str(accepted_answer_id)
+            }
+        }
+        # Notify faculty
+        assignments = db.query(FacultySubjectAssignment).filter(
+            FacultySubjectAssignment.subject_id == doubt.subject_id,
+            FacultySubjectAssignment.approval_status == "approved"
+        ).all()
+        for assignment in assignments:
+            await manager.send_personal_message(resolved_payload, assignment.faculty_id)
+        # Notify student
+        await manager.send_personal_message(resolved_payload, doubt.student_id)
+    except Exception:
+        pass
+
     # Return formatted DoubtOut
     subject = db.query(Subject).get(doubt.subject_id)
     ans_count = db.query(func.count(DoubtAnswer.id)).filter(DoubtAnswer.doubt_id == doubt.id).scalar()
@@ -316,6 +439,56 @@ def resolve_doubt(
         accepted_answer_id=doubt.accepted_answer_id,
         current_user_upvoted=True # If they resolved it, probably upvoted? Or let's just assume false/true. Let's do False. Actually we need to fetch it.
     )
+
+@router.put("/{doubt_id}/admin-resolve")
+async def admin_resolve_doubt(
+    doubt_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role("super_admin", "hod", "faculty"))
+):
+    """Allow admin/HOD/faculty to mark a doubt as resolved without selecting an answer."""
+    doubt = db.query(Doubt).get(doubt_id)
+    if not doubt:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+
+    if doubt.is_resolved:
+        raise HTTPException(status_code=409, detail="This doubt is already resolved")
+
+    doubt.is_resolved = True
+    db.commit()
+    db.refresh(doubt)
+
+    # Broadcast doubt resolved by admin
+    try:
+        resolved_payload = {
+            "type": "doubt_resolved",
+            "doubt": {
+                "id": str(doubt.id),
+                "is_resolved": True,
+                "accepted_answer_id": None
+            }
+        }
+        await manager.send_personal_message(resolved_payload, doubt.student_id)
+        
+        assignments = db.query(FacultySubjectAssignment).filter(
+            FacultySubjectAssignment.subject_id == doubt.subject_id,
+            FacultySubjectAssignment.approval_status == "approved"
+        ).all()
+        for assignment in assignments:
+            if assignment.faculty_id != current_user.id:
+                await manager.send_personal_message(resolved_payload, assignment.faculty_id)
+    except Exception:
+        pass
+
+    subject = db.query(Subject).get(doubt.subject_id)
+    student = db.query(User).get(doubt.student_id)
+    ans_count = db.query(func.count(DoubtAnswer.id)).filter(DoubtAnswer.doubt_id == doubt.id).scalar()
+
+    return {
+        "id": str(doubt.id),
+        "is_resolved": True,
+        "message": "Doubt marked as resolved by admin"
+    }
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_doubt(
@@ -350,7 +523,7 @@ def delete_doubt(
 def verify_answer(
     answer_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(require_role("super_admin", "hod", "faculty"))
 ):
     answer = db.query(DoubtAnswer).get(answer_id)
     if not answer:
@@ -360,3 +533,67 @@ def verify_answer(
     db.commit()
     db.refresh(answer)
     return {"is_verified_by_admin": answer.is_verified_by_admin}
+from pydantic import BaseModel
+
+class DoubtAnswerFlagPayload(BaseModel):
+    flag_reason: Optional[str] = None
+
+@router.post("/answers/{answer_id}/flag")
+async def flag_doubt_answer(
+    answer_id: uuid.UUID,
+    payload: DoubtAnswerFlagPayload,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_student)
+):
+    answer = db.query(DoubtAnswer).get(answer_id)
+    if not answer:
+        raise HTTPException(status_code=404, detail="Answer not found")
+        
+    answerer = db.query(User).get(answer.answered_by)
+    if not answerer:
+        raise HTTPException(status_code=404, detail="Answerer not found")
+        
+    doubt = db.query(Doubt).get(answer.doubt_id)
+    if not doubt:
+        raise HTTPException(status_code=404, detail="Associated doubt not found")
+        
+    subject = db.query(Subject).get(doubt.subject_id)
+    
+    # Save Notification
+    notif = Notification(
+        id=uuid.uuid4(),
+        recipient_user_id=answerer.id,
+        recipient_role=answerer.role,
+        title="Doubt Answer Flagged",
+        message=json.dumps({
+            "message": f"Your answer to the doubt '{doubt.question_text[:50]}...' has been flagged.",
+            "reason": payload.flag_reason or "No reason provided",
+            "student_name": current_user.name,
+            "doubt_title": doubt.question_text[:50],
+            "timestamp": datetime.utcnow().isoformat()
+        }),
+        module="doubts",
+        reference_id=answer.id,
+        priority="High"
+    )
+    db.add(notif)
+    db.commit()
+    db.refresh(notif)
+    
+    # WebSocket delivery
+    try:
+        await manager.send_personal_message({
+            "type": "notification",
+            "notification": {
+                "id": str(notif.id),
+                "title": notif.title,
+                "message": notif.message,
+                "module": notif.module,
+                "priority": notif.priority,
+                "created_at": datetime.now().isoformat()
+            }
+        }, answerer.id)
+    except Exception:
+        pass
+        
+    return {"message": "Answer flagged successfully and faculty notified"}

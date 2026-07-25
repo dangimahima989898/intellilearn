@@ -17,6 +17,8 @@ export default function StudentHome() {
   const [timetable, setTimetable] = useState([])
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
+  const [overview, setOverview] = useState(null)
+  const [overviewLoading, setOverviewLoading] = useState(true)
 
   const getGreeting = () => {
     const hour = new Date().getHours()
@@ -28,9 +30,10 @@ export default function StudentHome() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [ttData, evtData] = await Promise.all([
+        const [ttData, evtData, overviewData] = await Promise.all([
           studentService.getTimetable(),
-          studentService.getEvents()
+          studentService.getEvents(),
+          studentService.getOverview()
         ])
         
         // Filter timetable for today
@@ -40,10 +43,13 @@ export default function StudentHome() {
         
         // Filter future events and take top 4
         setEvents(evtData.filter(e => e.days_until >= 0).sort((a,b) => a.days_until - b.days_until).slice(0, 4))
+
+        setOverview(overviewData)
       } catch (error) {
         toast.error("Failed to load dashboard data")
       } finally {
         setLoading(false)
+        setOverviewLoading(false)
       }
     }
     fetchData()
@@ -51,14 +57,11 @@ export default function StudentHome() {
 
   const streakValue = user?.streak_count || 12
 
-  // Mock quiz performance scores for the line chart (last 5 scores)
-  const performanceData = [
-    { subject: 'DSA', score: 85 },
-    { subject: 'DBMS', score: 62 },
-    { subject: 'OS', score: 90 },
-    { subject: 'CN', score: 45 },
-    { subject: 'Java', score: 78 }
-  ]
+  // Derive quiz performance scores from API response
+  const performanceData = overview?.subjects_studied?.map(s => ({
+    subject: s.subject_name.substring(0, 10),
+    score: s.avg_score
+  })) || []
 
   const getPerformanceDotColor = (score) => {
     if (score >= 80) return '#10B981'
@@ -119,10 +122,10 @@ export default function StudentHome() {
   ]
 
   const stats = [
-    { label: "Quizzes Taken", value: "24" },
-    { label: "Avg Score", value: "78%" },
-    { label: "Doubts Asked", value: "6" },
-    { label: "Days Active", value: "32" }
+    { label: "Quizzes Taken", value: String(overview?.total_quizzes || 0) },
+    { label: "Avg Score", value: `${overview?.average_score || 0}%` },
+    { label: "Doubts Asked", value: String(overview?.doubts_asked || 0) },
+    { label: "Days Active", value: String(overview?.days_active || 0) }
   ]
 
   const getEventMarkerColor = (type) => {
@@ -197,11 +200,7 @@ export default function StudentHome() {
           <div
             key={idx}
             onClick={() => navigate(action.path)}
-            className={`border rounded-2xl p-5 cursor-pointer shadow-md hover:-translate-y-1 hover:shadow-lg transition-all duration-300 flex flex-col justify-between group ${action.border} ${
-              isLight 
-                ? 'bg-white border-slate-200/80 hover:shadow-slate-200' 
-                : 'bg-white/5 border-white/10'
-            }`}
+            className="il-card cursor-pointer hover:-translate-y-1 hover:shadow-lg transition-all duration-300 flex flex-col justify-between group"
           >
             <div>
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${action.bg}`}>
@@ -230,9 +229,7 @@ export default function StudentHome() {
         <div className="lg:col-span-2 space-y-6">
           
           {/* Today's Schedule */}
-          <div className={`border rounded-2xl p-6 shadow-xl ${
-            isLight ? 'bg-white border-slate-200/80' : 'bg-white/5 border-white/10'
-          }`}>
+          <div className="il-card">
             <div className="flex justify-between items-center mb-6">
               <h2 className={`text-lg font-outfit font-bold flex items-center gap-2 ${isLight ? 'text-slate-800' : 'text-white'}`}>
                 <Calendar className={`w-5 h-5 ${isLight ? 'text-blue-500' : 'text-blue-400'}`} />
@@ -281,52 +278,62 @@ export default function StudentHome() {
           </div>
 
           {/* Recent Performance */}
-          <div className={`border rounded-2xl p-6 shadow-xl ${
-            isLight ? 'bg-white border-slate-200/80' : 'bg-white/5 border-white/10'
-          }`}>
+          <div className="il-card">
             <div className="flex justify-between items-center mb-4">
               <h2 className={`text-lg font-outfit font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>Recent Performance</h2>
               <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Last 5 Quizzes</span>
             </div>
             
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={performanceData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                  <XAxis 
-                    dataKey="subject" 
-                    stroke={isLight ? '#94a3b8' : '#ffffff30'} 
-                    fontSize={10} 
-                    tickLine={false} 
-                    tick={{ fill: isLight ? '#64748b' : 'rgba(255,255,255,0.4)' }}
-                  />
-                  <YAxis 
-                    stroke={isLight ? '#94a3b8' : '#ffffff30'} 
-                    domain={[0, 100]} 
-                    fontSize={10} 
-                    tickLine={false}
-                    tick={{ fill: isLight ? '#64748b' : 'rgba(255,255,255,0.4)' }}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: isLight ? '#ffffff' : '#0F172A', 
-                      borderColor: isLight ? '#e2e8f0' : '#ffffff15', 
-                      borderRadius: '12px',
-                      boxShadow: isLight ? '0 4px 24px rgba(0,0,0,0.08)' : 'none'
-                    }}
-                    labelStyle={{ color: isLight ? '#1e293b' : '#ffffff', fontWeight: 'bold' }}
-                    itemStyle={{ color: '#3B82F6' }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="score" 
-                    stroke="#3B82F6" 
-                    strokeWidth={2}
-                    dot={<CustomPerformanceDot />}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            {overviewLoading ? (
+              <div className={`h-44 w-full animate-pulse rounded-xl ${isLight ? 'bg-slate-100' : 'bg-white/5'}`} />
+            ) : performanceData.length === 0 ? (
+              <div className={`flex flex-col items-center justify-center h-44 border border-dashed rounded-xl text-center select-none ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/3 border-white/10'
+              }`}>
+                <span className="text-3xl mb-2">📊</span>
+                <p className={`text-sm font-semibold ${isLight ? 'text-slate-500' : 'text-white/50'}`}>No quiz data yet</p>
+                <p className={`text-xs mt-1 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Take a quiz to see your performance!</p>
+              </div>
+            ) : (
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={performanceData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                    <XAxis 
+                      dataKey="subject" 
+                      stroke={isLight ? '#94a3b8' : '#ffffff30'} 
+                      fontSize={10} 
+                      tickLine={false} 
+                      tick={{ fill: isLight ? '#64748b' : 'rgba(255,255,255,0.4)' }}
+                    />
+                    <YAxis 
+                      stroke={isLight ? '#94a3b8' : '#ffffff30'} 
+                      domain={[0, 100]} 
+                      fontSize={10} 
+                      tickLine={false}
+                      tick={{ fill: isLight ? '#64748b' : 'rgba(255,255,255,0.4)' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: isLight ? '#ffffff' : '#0F172A', 
+                        borderColor: isLight ? '#e2e8f0' : '#ffffff15', 
+                        borderRadius: '12px',
+                        boxShadow: isLight ? '0 4px 24px rgba(0,0,0,0.08)' : 'none'
+                      }}
+                      labelStyle={{ color: isLight ? '#1e293b' : '#ffffff', fontWeight: 'bold' }}
+                      itemStyle={{ color: '#3B82F6' }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="score" 
+                      stroke="#3B82F6" 
+                      strokeWidth={2}
+                      dot={<CustomPerformanceDot />}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
 
         </div>
@@ -335,9 +342,7 @@ export default function StudentHome() {
         <div className="space-y-6">
           
           {/* Upcoming Events */}
-          <div className={`border rounded-2xl p-6 shadow-xl flex flex-col justify-between ${
-            isLight ? 'bg-white border-slate-200/80' : 'bg-white/5 border-white/10'
-          }`}>
+          <div className="il-card flex flex-col justify-between">
             <div>
               <h2 className={`text-lg font-outfit font-bold mb-6 ${isLight ? 'text-slate-800' : 'text-white'}`}>Upcoming Events</h2>
               
@@ -364,12 +369,10 @@ export default function StudentHome() {
               </div>
             </div>
 
-            <div className={`border-t mt-6 pt-4 text-center ${isLight ? 'border-slate-100' : 'border-white/10'}`}>
+            <div className={`border-t mt-6 pt-4 text-center ${isLight ? 'border-slate-150' : 'border-white/10'}`}>
               <button 
                 onClick={() => navigate('/student/events')}
-                className={`text-xs font-bold tracking-wide transition-colors cursor-pointer ${
-                  isLight ? 'text-blue-600 hover:text-blue-700' : 'text-blue-400 hover:text-blue-300'
-                }`}
+                className="text-xs font-bold tracking-wide transition-colors cursor-pointer text-brand hover:text-brand-dark"
               >
                 View all events →
               </button>
@@ -377,21 +380,27 @@ export default function StudentHome() {
           </div>
 
           {/* Your Stats */}
-          <div className={`border rounded-2xl p-6 shadow-xl ${
-            isLight ? 'bg-white border-slate-200/80' : 'bg-white/5 border-white/10'
-          }`}>
+          <div className="il-card">
             <h2 className={`text-lg font-outfit font-bold mb-6 ${isLight ? 'text-slate-800' : 'text-white'}`}>Your Stats</h2>
             
-            <div className="grid grid-cols-2 gap-4">
-              {stats.map((stat, idx) => (
-                <div key={idx} className={`border rounded-xl p-4 text-center ${
-                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/3 border-white/10'
-                }`}>
-                  <h3 className={`text-2xl font-outfit font-bold leading-none ${isLight ? 'text-slate-900' : 'text-white'}`}>{stat.value}</h3>
-                  <p className={`text-[10px] mt-1.5 font-bold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{stat.label}</p>
-                </div>
-              ))}
-            </div>
+            {overviewLoading ? (
+              <div className="grid grid-cols-2 gap-4">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className={`h-20 animate-pulse rounded-xl ${isLight ? 'bg-slate-100' : 'bg-white/5'}`} />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {stats.map((stat, idx) => (
+                  <div key={idx} className={`border rounded-xl p-4 text-center ${
+                    isLight ? 'bg-slate-50 border-slate-250' : 'bg-white/3 border-white/10'
+                  }`}>
+                    <h3 className={`text-2xl font-outfit font-bold leading-none ${isLight ? 'text-slate-900' : 'text-white'}`}>{stat.value}</h3>
+                    <p className={`text-[10px] mt-1.5 font-bold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/40'}`}>{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>

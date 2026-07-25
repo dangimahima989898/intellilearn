@@ -21,7 +21,9 @@ import {
   X,
   LogOut,
   Sun,
-  Moon
+  Moon,
+  Sparkles,
+  GraduationCap
 } from 'lucide-react'
 
 export default function StudentLayout() {
@@ -35,6 +37,53 @@ export default function StudentLayout() {
   const [isAiTutorVisited, setIsAiTutorVisited] = useState(
     localStorage.getItem('aiTutorVisited') === 'true'
   )
+  const [badgeCounts, setBadgeCounts] = useState({
+    doubts: 0,
+    notifications: 0
+  })
+
+  const fetchBadgeCounts = async () => {
+    if (!user) return
+    try {
+      const fetchDoubts = async () => {
+        const r = await api.get('/doubts?is_resolved=false')
+        return r.data.length
+      }
+      const fetchNotifications = async () => {
+        const r = await api.get('/notifications/mine')
+        return r.data.unread_count || 0
+      }
+      const [doubts, notifications] = await Promise.all([
+        fetchDoubts().catch(() => 0),
+        fetchNotifications().catch(() => 0),
+      ])
+      setBadgeCounts({ doubts, notifications })
+    } catch (err) {
+      console.warn("Failed to fetch student badge counts", err)
+    }
+  }
+
+  // Initial fetch and polling
+  useEffect(() => {
+    if (!user) return
+    fetchBadgeCounts()
+    const iv = setInterval(fetchBadgeCounts, 15000)
+    return () => clearInterval(iv)
+  }, [user, location.pathname])
+
+  // Real-time WebSocket and local event listener
+  useEffect(() => {
+    if (!user) return
+    const handleUpdate = () => {
+      fetchBadgeCounts()
+    }
+    window.addEventListener('ws-message', handleUpdate)
+    window.addEventListener('badge-update', handleUpdate)
+    return () => {
+      window.removeEventListener('ws-message', handleUpdate)
+      window.removeEventListener('badge-update', handleUpdate)
+    }
+  }, [user])
 
   useEffect(() => {
     const setupNotifications = async () => {
@@ -76,15 +125,12 @@ export default function StudentLayout() {
 
   const navItems = [
     { name: 'Home', path: '/student', icon: LayoutDashboard, exact: true },
-    { name: 'My Notes', path: '/student/notes', icon: BookOpen },
+    { name: 'Notes & Summaries', path: '/student/notes', icon: BookOpen },
+    { name: 'Practice Hub', path: '/student/practice', icon: Zap },
     { name: 'AI Tutor', path: '/student/chatbot', icon: Bot, badge: !isAiTutorVisited },
-    { name: 'Questions', path: '/student/questions', icon: Zap },
-    { name: 'Adaptive Quiz', path: '/student/quiz', icon: Target },
-    { name: 'Daily Challenge', path: '/student/challenge', icon: Trophy },
-    { name: 'Doubt Board', path: '/student/doubts', icon: MessageCircle },
+    { name: 'Doubt Board', path: '/student/doubts', icon: MessageCircle, badge: badgeCounts.doubts },
+    { name: 'Schedule', path: '/student/schedule', icon: Calendar },
     { name: 'My Progress', path: '/student/progress', icon: TrendingUp },
-    { name: 'Timetable', path: '/student/timetable', icon: Calendar },
-    { name: 'Events', path: '/student/events', icon: CalendarDays },
   ]
 
   const getPageTitle = () => {
@@ -105,13 +151,15 @@ export default function StudentLayout() {
       {/* Logo Section */}
       <div className={`p-6 shrink-0 border-b ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
         <div className="flex items-center gap-3">
-          <GraduationCapIcon className={`w-8 h-8 ${isLight ? 'text-blue-600' : 'text-[#3B82F6]'}`} />
+          <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center shadow-[0_2px_8px_rgba(124,58,237,0.4)] shrink-0">
+            <GraduationCap className="w-5 h-5 text-white" />
+          </div>
           <span className={`text-xl font-outfit font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>IntelliLearn</span>
         </div>
-        <div className={`mt-2 inline-block text-xs px-2.5 py-0.5 rounded-full font-medium ${
+        <div className={`mt-2 inline-block text-[10px] tracking-wider uppercase px-2.5 py-0.5 rounded-full font-bold border ${
           isLight 
-            ? 'bg-blue-100 text-blue-600 border border-blue-200' 
-            : 'bg-blue-500/20 text-blue-300'
+            ? 'bg-brand/10 text-brand border-brand/20' 
+            : 'bg-brand/15 text-brand-light border-brand/25'
         }`}>
           Student Portal
         </div>
@@ -121,10 +169,10 @@ export default function StudentLayout() {
       {user?.course_code && (
         <div className={`border rounded-xl p-3 mx-4 mt-4 mb-2 shrink-0 animate-fade-in ${
           isLight 
-            ? 'bg-blue-50 border-blue-200' 
-            : 'bg-blue-500/10 border-blue-500/20'
+            ? 'bg-brand/5 border-brand/10' 
+            : 'bg-brand/10 border-brand/15'
         }`}>
-          <div className={`text-xs font-bold ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>🎓 {user.course_code} — Sem {user.current_semester}</div>
+          <div className={`text-xs font-bold ${isLight ? 'text-brand' : 'text-brand-light'}`}>🎓 {user.course_code} — Sem {user.current_semester}</div>
           <div className={`text-[10px] mt-1 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Enrollment: {user.enrollment_no || 'N/A'}</div>
           <div className={`text-[10px] ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Section: {user.section || 'A'}</div>
         </div>
@@ -141,25 +189,28 @@ export default function StudentLayout() {
             <NavLink
               key={item.name}
               to={item.path}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
+              className={`flex items-center justify-between px-3 py-2.5 rounded-xl transition-all cursor-pointer border relative ${
                 isActive
                   ? isLight
-                    ? 'bg-blue-100 text-blue-700 border border-blue-200 font-semibold'
-                    : 'bg-blue-500/15 text-blue-300 border border-blue-500/25 font-semibold animate-pulse-subtle'
+                    ? 'bg-brand/10 text-brand border-brand/15 font-semibold animate-pulse-subtle'
+                    : 'bg-brand/15 text-brand-light border-brand/25 font-semibold animate-pulse-subtle'
                   : isLight
-                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
-                    : 'text-white/50 hover:text-white hover:bg-white/5 font-medium'
+                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium border-transparent'
+                    : 'text-white/50 hover:text-white hover:bg-white/5 font-medium border-transparent'
               }`}
             >
+              {isActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[18px] bg-brand rounded-r" />
+              )}
               <div className="flex items-center gap-3">
                 <item.icon className="w-5 h-5 shrink-0" />
                 <span className="text-sm">{item.name}</span>
               </div>
-              {item.badge && (
+              {item.badge !== undefined && item.badge !== false && (typeof item.badge === 'boolean' || item.badge > 0) && (
                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse ${
                   isLight ? 'bg-teal-100 text-teal-700' : 'bg-teal-500/20 text-teal-300'
                 }`}>
-                  New
+                  {typeof item.badge === 'boolean' ? 'New' : item.badge}
                 </span>
               )}
             </NavLink>
@@ -172,23 +223,23 @@ export default function StudentLayout() {
 
       {/* Bottom Profile section */}
       <div className={`p-4 border-t shrink-0 flex items-center gap-3 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
-          isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/30 text-blue-300'
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+          isLight ? 'bg-brand/10 text-brand' : 'bg-brand/20 text-brand-light'
         }`}>
           {getInitials(user?.name)}
         </div>
         <div className="flex flex-col min-w-0 pr-1 flex-1">
           <span className={`text-sm font-semibold truncate ${isLight ? 'text-slate-800' : 'text-white'}`}>
-            {user?.name || 'Mahima Dangi'}
+            {user?.name || 'Student'}
           </span>
-          <span className={`text-xs truncate ${isLight ? 'text-slate-400' : 'text-white/40'}`}>
+          <span className={`text-[10px] truncate ${isLight ? 'text-slate-400' : 'text-white/40'}`}>
             {user?.email || 'you@example.com'}
           </span>
         </div>
         <button
           onClick={handleLogout}
-          className={`transition-colors p-2 rounded-lg ${
-            isLight ? 'text-slate-400 hover:text-red-500 hover:bg-red-50' : 'text-white/40 hover:text-red-450 hover:bg-white/5'
+          className={`transition-colors p-2 rounded-lg cursor-pointer ${
+            isLight ? 'text-slate-400 hover:text-red-500 hover:bg-red-50' : 'text-white/40 hover:text-red-400 hover:bg-white/5'
           }`}
           title="Sign Out"
         >
@@ -269,19 +320,19 @@ export default function StudentLayout() {
             {/* Notification Bell */}
             <NotificationBell />
 
+            <div className={`hidden md:block w-px h-5 ${isLight ? 'bg-slate-200' : 'bg-white/10'}`} />
+
             {/* Name label & Sem badge */}
             <div className="hidden md:flex items-center gap-2.5">
-              {user?.course_code && (
-                <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
-                  isLight 
-                    ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                    : 'bg-blue-500/25 text-blue-300 border-blue-500/35'
-                }`}>
-                  {user.course_code} Sem {user.current_semester} | Sec {user.section || 'A'}
-                </span>
-              )}
               <span className={`text-sm font-semibold truncate max-w-[100px] ${isLight ? 'text-slate-700' : 'text-white/70'}`}>
-                {user?.name?.split(' ')[0] || 'Mahima'}
+                {user?.name?.split(' ')[0] || 'Student'}
+              </span>
+              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border tracking-wide uppercase ${
+                isLight 
+                  ? 'bg-brand/10 text-brand border-brand/20' 
+                  : 'bg-brand/15 text-brand-light border-brand/25'
+              }`}>
+                Student
               </span>
             </div>
           </div>
@@ -315,7 +366,6 @@ export default function StudentLayout() {
           </aside>
         </div>
       )}
-
     </div>
   )
 }

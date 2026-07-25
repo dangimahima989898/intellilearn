@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, DateTime
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -17,5 +17,10 @@ class Course(Base):
     is_active        = Column(Boolean,     default=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
-    students   = relationship("User",    back_populates="course")
+    created_by_hod_id = Column(UUID(as_uuid=True), ForeignKey("users.id", use_alter=True, name="fk_course_hod"), nullable=True)
+    department_id = Column(UUID(as_uuid=True), ForeignKey("departments.department_id"), nullable=True)
+
+    department = relationship("Department", back_populates="courses")
+    students   = relationship("User", back_populates="course", foreign_keys="[User.course_id]")
     subjects   = relationship("Subject", back_populates="course")
+    semesters  = relationship("Semester", back_populates="course", cascade="all, delete-orphan")

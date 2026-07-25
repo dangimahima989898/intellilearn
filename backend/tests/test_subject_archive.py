@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 import uuid
 from datetime import datetime, timedelta
 
-from database import Base, get_db
+from database import Base, get_db, get_db_sync
 from main import app
 from models.user import User
 from models.course import Course
@@ -30,7 +30,7 @@ def db_session():
             name="Admin Test",
             email="admin@intellilearn.com",
             password_hash=hash_password("admin123"),
-            role="admin",
+            role="super_admin",
             is_active=True
         )
         db.add(admin)
@@ -62,6 +62,7 @@ def client(db_session):
             pass
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_sync] = override_get_db
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

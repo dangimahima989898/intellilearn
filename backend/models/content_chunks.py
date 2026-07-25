@@ -3,6 +3,7 @@ from sqlalchemy import Column, DateTime, ForeignKey, String, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from pgvector.sqlalchemy import Vector
 from database import Base
 
 
@@ -16,6 +17,10 @@ class ContentChunk(Base):
     source_file = Column(String(255), nullable=True)  # original filename
     chunk_index = Column(Integer, default=0)          # ordering within source
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    embedding = Column(Vector(384), nullable=True)
+    note_id = Column(UUID(as_uuid=True), ForeignKey("uploaded_notes.id", ondelete="CASCADE"), nullable=True, index=True)
+    processing_status = Column(String(20), default="pending")
 
     # Relationships
     subject = relationship("Subject", back_populates="content_chunks")
+    note = relationship("UploadedNote", back_populates="chunks")

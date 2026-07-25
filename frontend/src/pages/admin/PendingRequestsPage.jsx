@@ -11,10 +11,8 @@ import {
   ArrowRight,
   ShieldAlert
 } from "lucide-react"
-import axios from "axios"
+import api from "../../services/api"
 import toast from "react-hot-toast"
-
-const API_BASE_URL = "http://localhost:8000/api"
 
 export default function PendingRequestsPage() {
   const { token } = useAuth()
@@ -35,12 +33,10 @@ export default function PendingRequestsPage() {
   const fetchRequests = async () => {
     setLoading(true)
     try {
-      const response = await axios.get(`${API_BASE_URL}/admin/access-requests?status=pending`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const response = await api.get('/api/admin/access-requests?status=pending')
       setRequests(response.data)
     } catch (err) {
-      toast.error("Failed to load access requests")
+      console.warn("Failed to load access requests:", err?.message)
     } finally {
       setLoading(false)
     }
@@ -54,10 +50,9 @@ export default function PendingRequestsPage() {
   const handleApprove = async (request, override = false) => {
     setActionLoading(true)
     try {
-      const response = await axios.patch(
-        `${API_BASE_URL}/admin/access-requests/${request.id}/approve`,
-        { override },
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await api.patch(
+        `/api/admin/access-requests/${request.id}/approve`,
+        { override }
       )
 
       if (response.data.warning) {
@@ -84,10 +79,9 @@ export default function PendingRequestsPage() {
     if (!rejectReq) return
     setActionLoading(true)
     try {
-      const response = await axios.patch(
-        `${API_BASE_URL}/admin/access-requests/${rejectReq.id}/reject`,
-        { rejection_reason: rejectionReason },
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await api.patch(
+        `/api/admin/access-requests/${rejectReq.id}/reject`,
+        { rejection_reason: rejectionReason }
       )
       toast.success(response.data.message || "Request successfully rejected.")
       setShowRejectModal(false)

@@ -103,6 +103,53 @@ async def generate_questions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Subject with code '{req.subject_code}' not found or is archived"
         )
+    
+    # ── Duplicate Prevention: Check existing unanswered questions ──────────
+    from models.quiz_answer import QuizAnswer
+    from models.quiz_attempt import QuizAttempt
+
+    # Get IDs of questions this student has already answered for this subject+topic across ALL sessions
+    attempted_q_ids = db.query(QuizAnswer.question_id).join(
+        QuizAttempt, QuizAnswer.attempt_id == QuizAttempt.id
+    ).filter(
+        QuizAttempt.student_id == current_user.id,
+        QuizAttempt.subject_id == subject.id,
+    ).all()
+    attempted_ids = {row[0] for row in attempted_q_ids}
+    
+    # Also get questions already generated for this student via practice
+    existing_practice_ids_query = db.query(Question.id).filter(
+        Question.subject_id == subject.id,
+        Question.topic.ilike(f"%{req.topic}%"),
+        Question.difficulty == diff_lower,
+    ).all()
+    existing_ids = {row[0] for row in existing_practice_ids_query}
+    
+    # Find unattempted questions from the bank
+    unattempted = db.query(Question).filter(
+        Question.subject_id == subject.id,
+        Question.topic.ilike(f"%{req.topic}%"),
+        Question.difficulty == diff_lower,
+        Question.id.notin_(attempted_ids) if attempted_ids else True,
+    ).limit(req.count).all()
+    
+    # If we have enough unattempted questions in the bank, serve those directly
+    if len(unattempted) >= req.count:
+        saved_questions = []
+        for q in unattempted[:req.count]:
+            saved_questions.append(QuestionOut(
+                id=q.id, subject_id=q.subject_id, subject_name=subject.name,
+                topic=q.topic, difficulty=q.difficulty, question_text=q.question_text,
+                option_a=q.option_a, option_b=q.option_b, option_c=q.option_c, option_d=q.option_d,
+                correct_answer=q.correct_answer, explanation=q.explanation, created_at=q.created_at,
+            ))
+        return GenerateResponse(
+            questions=saved_questions, generated_count=len(saved_questions),
+            subject=req.subject_code, topic=req.topic, difficulty=req.difficulty,
+        )
+    
+    # Not enough in bank — generate fresh ones via LLM
+    # ──────────────────────────────────────────────────────────────────────
         
     # Build prompt
     prompt = QUESTION_GENERATION_PROMPT.format(
@@ -210,6 +257,37 @@ async def generate_questions(
         )
         saved_questions.append(q_out)
         
+    if not saved_questions:
+        # All questions in DB have been seen — serve previously-attempted ones with a warning
+        fallback_qs = db.query(Question).filter(
+            Question.subject_id == subject.id,
+            Question.topic.ilike(f"%{req.topic}%"),
+            Question.difficulty == diff_lower,
+        ).order_by(func.random()).limit(req.count).all()
+
+        if not fallback_qs:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No questions found for topic '{req.topic}' at difficulty '{req.difficulty}'. Try a different topic or difficulty."
+            )
+
+        for q in fallback_qs:
+            saved_questions.append(QuestionOut(
+                id=q.id, subject_id=q.subject_id, subject_name=subject.name,
+                topic=q.topic, difficulty=q.difficulty, question_text=q.question_text,
+                option_a=q.option_a, option_b=q.option_b, option_c=q.option_c, option_d=q.option_d,
+                correct_answer=q.correct_answer, explanation=q.explanation, created_at=q.created_at,
+            ))
+
+        return GenerateResponse(
+            questions=saved_questions,
+            generated_count=len(saved_questions),
+            subject=subject.code,
+            topic=req.topic,
+            difficulty=diff_lower,
+            warning="Question bank exhausted for this topic and difficulty. Showing previously answered questions — try a different topic to discover new content."
+        )
+
     return GenerateResponse(
         questions=saved_questions,
         generated_count=len(saved_questions),

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, MessageSquare, ThumbsUp, CheckCircle2, 
   Clock, User as UserIcon, Send, ShieldCheck, Award,
-  CheckCircle, HelpCircle
+  CheckCircle, HelpCircle, Flag
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -23,6 +23,46 @@ export default function DoubtDetailPage() {
 
   useEffect(() => {
     loadDoubt();
+  }, [id]);
+
+  useEffect(() => {
+    const handleWsMessage = (e) => {
+      const { type, doubt, doubt_id, answer } = e.detail || {};
+      if (type === "doubt_answered" && doubt_id === id) {
+        setData(prev => {
+          if (!prev) return prev;
+          if (prev.answers.some(a => a.id === answer.id)) return prev;
+          return {
+            ...prev,
+            doubt: {
+              ...prev.doubt,
+              answer_count: (prev.doubt.answer_count || 0) + 1
+            },
+            answers: [...prev.answers, answer]
+          };
+        });
+      } else if (type === "doubt_resolved" && doubt?.id === id) {
+        setData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            doubt: {
+              ...prev.doubt,
+              is_resolved: true,
+              accepted_answer_id: doubt.accepted_answer_id
+            },
+            answers: prev.answers.map(a => 
+              a.id === doubt.accepted_answer_id 
+                ? { ...a, is_accepted: true } 
+                : a
+            )
+          };
+        });
+      }
+    };
+
+    window.addEventListener("ws-message", handleWsMessage);
+    return () => window.removeEventListener("ws-message", handleWsMessage);
   }, [id]);
 
   const loadDoubt = async () => {
@@ -98,6 +138,17 @@ export default function DoubtDetailPage() {
       loadDoubt();
     } catch (err) {
       toast.error("Failed to resolve.");
+    }
+  };
+
+  const handleFlagAnswer = async (answerId) => {
+    const reason = window.prompt("Please enter the reason for flagging this answer:");
+    if (reason === null) return; // User cancelled
+    try {
+      await doubtService.flagAnswer(answerId, reason);
+      toast.success("Answer flagged and faculty notified!", { icon: "🚩" });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to flag answer.");
     }
   };
 
@@ -296,18 +347,31 @@ export default function DoubtDetailPage() {
                   <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">{ans.answer_text}</p>
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
-                  <button 
-                    onClick={() => handleUpvote(ans.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-black transition-all cursor-pointer ${
-                      ans.current_user_upvoted 
-                        ? "bg-blue-500 text-white border-blue-500 shadow-lg shadow-blue-500/25" 
-                        : "bg-white/5 border-white/10 text-white/50 hover:border-white/20 hover:text-white"
-                    }`}
-                  >
-                    <ThumbsUp className={`w-3.5 h-3.5 ${ans.current_user_upvoted ? "fill-white" : ""}`} />
-                    <span className="text-xs">{ans.upvotes} {ans.upvotes === 1 ? "Helpful" : "Helpfuls"}</span>
-                  </button>
+                 <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => handleUpvote(ans.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-black transition-all cursor-pointer ${
+                        ans.current_user_upvoted 
+                          ? "bg-blue-500 text-white border-blue-500 shadow-lg shadow-blue-500/25" 
+                          : "bg-white/5 border-white/10 text-white/50 hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      <ThumbsUp className={`w-3.5 h-3.5 ${ans.current_user_upvoted ? "fill-white" : ""}`} />
+                      <span className="text-xs">{ans.upvotes} {ans.upvotes === 1 ? "Helpful" : "Helpfuls"}</span>
+                    </button>
+
+                    {user?.role === "student" && ans.answered_by_id !== user.id && (
+                      <button
+                        onClick={() => handleFlagAnswer(ans.id)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 bg-red-500/5 text-red-400/70 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all font-black cursor-pointer"
+                        title="Flag this answer as incorrect or inappropriate"
+                      >
+                        <Flag className="w-3.5 h-3.5" />
+                        <span className="text-xs">Flag</span>
+                      </button>
+                    )}
+                  </div>
 
                   {isAuthor && !doubt.is_resolved && (
                     <button 

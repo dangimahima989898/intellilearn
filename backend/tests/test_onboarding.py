@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from database import Base, get_db
+from database import Base, get_db, get_db_sync
 from main import app
 from models.user import User
 from models.enrolled_student import EnrolledStudent
@@ -27,7 +27,7 @@ def db_session():
             name="Admin Test",
             email="admin@intellilearn.com",
             password_hash=hash_password("admin123"),
-            role="admin",
+            role="super_admin",
             is_active=True
         )
         db.add(admin)
@@ -47,6 +47,7 @@ def client(db_session):
             pass
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_sync] = override_get_db
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

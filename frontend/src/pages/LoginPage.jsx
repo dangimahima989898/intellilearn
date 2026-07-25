@@ -69,11 +69,11 @@ export default function LoginPage() {
 
   return (
     <div style={{
-      minHeight: "100vh",
+      minHeight: "100dvh",
       background: "#05091A",
       fontFamily: "'Inter', 'Segoe UI', sans-serif",
       position: "relative",
-      overflow: "hidden",
+      overflowX: "hidden",
       display: "flex", flexDirection: "column",
       /* Entrance: fade + slide up from 30px */
       opacity: mounted ? 1 : 0,
@@ -217,9 +217,9 @@ export default function LoginPage() {
         flex:1, display:"flex", flexDirection:"column",
         alignItems:"center", justifyContent:"center",
         position:"relative", zIndex:10,
-        padding:"28px 24px",
+        padding:"16px 24px",
       }}>
-        <div className="hero-animate" style={{ textAlign:"center", marginBottom:44, maxWidth:560 }}>
+        <div className="hero-animate" style={{ textAlign:"center", marginBottom:24, maxWidth:560 }}>
           {/* Pill badge */}
           <div style={{
             display:"inline-flex", alignItems:"center", gap:7,
@@ -251,14 +251,14 @@ export default function LoginPage() {
 
           {/* Animated underline */}
           <div style={{
-            height:3, borderRadius:999, margin:"0 auto 18px",
+            height:3, borderRadius:999, margin:"0 auto 12px",
             background:"linear-gradient(90deg, #3B82F6, #8B5CF6)",
             animation:"line-grow 0.7s cubic-bezier(0.4,0,0.2,1) 0.4s both",
           }} />
 
           <p style={{
-            fontSize:"clamp(0.85rem, 2vw, 1rem)",
-            color:"rgba(255,255,255,0.42)", lineHeight:1.75,
+            fontSize:"clamp(0.85rem, 1.8vw, 0.95rem)",
+            color:"rgba(255,255,255,0.42)", lineHeight:1.6,
             fontWeight:300, maxWidth:440, margin:"0 auto",
           }}>
             Choose your dedicated workspace to explore courseware, solve doubts, or administer the platform.
@@ -289,7 +289,7 @@ export default function LoginPage() {
                 ? "1px solid rgba(59,130,246,0.4)"
                 : "1px solid rgba(255,255,255,0.08)",
               borderRadius:24,
-              padding:"32px 28px",
+              padding:"24px 20px",
               display:"flex", flexDirection:"column",
               backdropFilter:"blur(16px)",
               transition:"all 0.35s cubic-bezier(0.4,0,0.2,1)",
@@ -409,7 +409,7 @@ export default function LoginPage() {
                 ? "1px solid rgba(139,92,246,0.4)"
                 : "1px solid rgba(255,255,255,0.08)",
               borderRadius:24,
-              padding:"32px 28px",
+              padding:"24px 20px",
               display:"flex", flexDirection:"column",
               backdropFilter:"blur(16px)",
               transition:"all 0.35s cubic-bezier(0.4,0,0.2,1)",

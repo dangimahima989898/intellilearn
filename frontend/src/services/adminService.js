@@ -82,6 +82,10 @@ const adminService = {
     const response = await api.post("/timetable", data)
     return response.data
   },
+  updateTimetableSlot: async (id, data) => {
+    const response = await api.put(`/timetable/${id}`, data)
+    return response.data
+  },
   deleteTimetableSlot: async (id) => {
     const response = await api.delete(`/timetable/${id}`)
     return response.data
@@ -141,6 +145,34 @@ const adminService = {
   },
   deleteEnrolledStudent: async (id) => {
     const response = await api.delete(`/api/admin/enrolled-students/${id}`)
+    return response.data
+  },
+
+  // Departments
+  getDepartments: async (search = null) => {
+    const params = new URLSearchParams()
+    if (search) params.append("search", search)
+    const response = await api.get(`/departments?${params.toString()}`)
+    return response.data
+  },
+  getActiveDepartments: async () => {
+    const response = await api.get("/departments/active")
+    return response.data
+  },
+  getDepartmentById: async (id) => {
+    const response = await api.get(`/departments/${id}`)
+    return response.data
+  },
+  createDepartment: async (data) => {
+    const response = await api.post("/departments", data)
+    return response.data
+  },
+  updateDepartment: async (id, data) => {
+    const response = await api.put(`/departments/${id}`, data)
+    return response.data
+  },
+  deleteDepartment: async (id) => {
+    const response = await api.delete(`/departments/${id}`)
     return response.data
   }
 }

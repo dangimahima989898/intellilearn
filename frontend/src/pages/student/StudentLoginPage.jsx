@@ -63,7 +63,7 @@ export default function StudentLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0F1E] font-dm text-white flex relative overflow-hidden">
+    <div className="min-h-[100dvh] bg-[#0A0F1E] font-dm text-white flex relative overflow-hidden">
       {/* Floating Theme Toggle */}
       <button
         onClick={toggleTheme}

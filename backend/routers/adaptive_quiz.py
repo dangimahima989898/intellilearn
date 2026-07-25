@@ -1,81 +1,96 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, cast, Integer
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import uuid
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import get_db
+from models.content_chunks import ContentChunk
 from models.question import Question
 from models.subject import Subject
 from models.quiz_attempt import QuizAttempt
 from models.quiz_answer import QuizAnswer
-from utils.dependencies import require_student
+from utils.dependencies import require_student, require_admin, require_hod_or_admin
 from utils.llm_client import get_llm_response
+from utils.adaptive_engine import AdaptiveEngine
 from schemas.adaptive_quiz import (
     QuizStartRequest, QuizStartResponse, QuizSubmitRequest, 
-    QuizSubmitResponse, WeakChapter, QuestionResult, AnswerSubmit, QuizHistoryItem
+    QuizSubmitResponse, WeakChapter, QuestionResult, AnswerSubmit, QuizHistoryItem,
+    SingleAnswerSubmit, SingleAnswerResponse, QuizReportResponse, WeakTopicDetail,
+    ExplainRequest, ExplainResponse, FrequentlyWrongQuestion, AdminQuizAnalyticsResponse,
+    AdaptiveQuestionOut
 )
-from schemas.question import QuestionOut
 
 router = APIRouter(prefix="/adaptive-quiz", tags=["Adaptive Quiz"])
 
-QUESTION_GENERATION_PROMPT = """Generate exactly {count} multiple choice questions about the topic "{topic}" within the subject "{subject_name}" for MCA (Master of Computer Applications) university students.
+AI_GENERATION_PROMPT = """Generate exactly {count} multiple choice questions about the topic "{topic}" within the subject "{subject_name}" for MCA (Master of Computer Applications) university students.
 
-Difficulty: {difficulty}
-- EASY: Basic definitions, simple concepts, straightforward recall questions
-- MEDIUM: Application-based questions, moderate analysis, comparing concepts
-- HARD: Complex analysis, edge cases, tricky variations, advanced implementation details
+You must distribute the questions as follows:
+- Mix of difficulties: EASY, MEDIUM, HARD.
+- Mix of units: "Unit 1", "Unit 2", "Unit 3", "Unit 4", "Unit 5".
 
-For each question, you MUST provide all 4 options and exactly one correct answer.
+For each question, you MUST provide:
+1. "question": The full question text
+2. "option_a", "option_b", "option_c", "option_d"
+3. "correct_answer": "a", "b", "c", or "d"
+4. "explanation": Brief explanation (2-3 sentences) referencing the subject, unit, and MCA syllabus context.
+5. "difficulty": "easy", "medium", or "hard"
+6. "unit": "Unit 1", "Unit 2", "Unit 3", "Unit 4", or "Unit 5"
+7. "bloom_taxonomy_level": "Remember", "Understand", "Apply", or "Analyze"
+8. "estimated_time_seconds": An integer representing typical reading and answering time (e.g., 20 to 60)
 
 Return ONLY a valid JSON array. No markdown code blocks. No explanation. No preamble.
 The response must start with [ and end with ].
+"""
 
-JSON structure:
-[
-  {{
-    "question": "The full question text here?",
-    "option_a": "First option",
-    "option_b": "Second option",
-    "option_c": "Third option",
-    "option_d": "Fourth option",
-    "correct_answer": "a",
-    "explanation": "Brief explanation of why this answer is correct (2-3 sentences)"
-  }}
-]
+EXPLAIN_PROMPT = """You are an expert tutor for MCA (Master of Computer Applications) students at Mohanlal Sukhadia University (MLSU), Udaipur.
+A student answered a question incorrectly. Please provide a clear, detailed, and syllabus-grounded explanation.
+
+Question: {question_text}
+Options:
+A: {option_a}
+B: {option_b}
+C: {option_c}
+D: {option_d}
+
+Correct Answer: {correct_answer}
+Student's Answer: {student_answer}
+
+Subject: {subject_name}
+Topic: {topic}
+Unit: {unit}
+
+Please write a structured explanation:
+1. Identify the correct option and explain why it is correct.
+2. Explain why the student's chosen option is incorrect.
+3. Ground your explanation in the core concepts of the {subject_name} ({unit}) curriculum, referencing practical examples or applications.
+4. Keep the explanation supportive, encouraging, and clear (max 4-5 sentences).
 """
 
 def determine_difficulty(student_id: uuid.UUID, subject_id: uuid.UUID, db: Session) -> Tuple[str, str]:
-    # 1. Query last 5 QuizAttempts for this student + subject where completed_at is not null
+    # Query last 5 QuizAttempts for this student + subject where completed_at is not null
     history = db.query(QuizAttempt).filter(
         QuizAttempt.student_id == student_id,
         QuizAttempt.subject_id == subject_id,
         QuizAttempt.completed_at.isnot(None)
     ).order_by(desc(QuizAttempt.completed_at)).limit(5).all()
 
-    # 2. If no history → return ("easy", "First quiz on this subject — starting with Easy level!")
     if not history:
         return "easy", "First quiz on this subject — starting with Easy level!"
 
-    # 3. Calculate avg_score = average of those attempts' score
     avg_score = sum(h.score for h in history) / len(history)
 
-    # 4. If avg_score >= 75 → return ("hard", ...)
     if avg_score >= 75:
         return "hard", f"Your recent average is {avg_score:.0f}% — Moving to Hard level!"
-    # 5. If avg_score >= 50 → return ("medium", ...)
     elif avg_score >= 50:
         return "medium", f"Your recent average is {avg_score:.0f}% — Keeping at Medium level"
-    # 6. Else → return ("easy", ...)
     else:
         return "easy", f"Your recent average is {avg_score:.0f}% — Let's practice with Easy level first"
 
 def detect_weak_chapters(student_id: uuid.UUID, subject_id: uuid.UUID, db: Session) -> List[WeakChapter]:
-    # 1. Get all QuizAnswers for this student + subject (join through QuizAttempt)
-    # 2. Group by the topic of the related QuizAttempt
     query = db.query(
         QuizAttempt.topic,
         Subject.name.label("subject_name"),
@@ -102,42 +117,10 @@ def detect_weak_chapters(student_id: uuid.UUID, subject_id: uuid.UUID, db: Sessi
                     attempts=total
                 ))
     
-    # Sort by correct_rate ascending (weakest first)
     weak.sort(key=lambda x: x.correct_rate)
     return weak
 
-@router.post("/start", response_model=QuizStartResponse)
-async def start_adaptive_quiz(
-    req: QuizStartRequest,
-    db: Session = Depends(get_db),
-    current_user = Depends(require_student)
-):
-    # 1. Find subject by ID
-    subject = db.query(Subject).filter(Subject.id == req.subject_id, Subject.is_archived == False).first()
-    if not subject:
-        raise HTTPException(status_code=404, detail="Subject not found")
-
-    # 2. Determine difficulty
-    difficulty, reason = determine_difficulty(current_user.id, subject.id, db)
-
-    # 3. Generate 10 questions via LLM
-    prompt = QUESTION_GENERATION_PROMPT.format(
-        count=10,
-        topic=req.topic,
-        subject_name=subject.name,
-        difficulty=difficulty.upper()
-    )
-
-    try:
-        raw_response = await get_llm_response(
-            messages=[{"role": "user", "content": "Generate the JSON array of questions now."}],
-            system_prompt=prompt,
-            max_tokens=3000
-        )
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"LLM generation failed: {str(e)}")
-
-    # Parse JSON
+def parse_ai_questions_json(raw_response: str) -> list:
     cleaned_res = raw_response.strip()
     if cleaned_res.startswith("```"):
         cleaned_res = re.sub(r"^```(?:json)?", "", cleaned_res, flags=re.IGNORECASE)
@@ -147,176 +130,248 @@ async def start_adaptive_quiz(
     end_idx = cleaned_res.rfind("]")
     if start_idx != -1 and end_idx != -1:
         cleaned_res = cleaned_res[start_idx:end_idx+1]
-        
-    try:
-        questions_list = json.loads(cleaned_res)
-    except:
-        raise HTTPException(status_code=502, detail="Failed to parse AI response")
+    return json.loads(cleaned_res)
 
-    # 4. Save each generated question to DB
-    saved_questions_out = []
-    question_ids = []
-    for item in questions_list:
-        q_text = item.get("question") or item.get("question_text")
-        opt_a = item.get("option_a")
-        opt_b = item.get("option_b")
-        opt_c = item.get("option_c")
-        opt_d = item.get("option_d")
-        corr = item.get("correct_answer", "a").lower().strip()
-        expl = item.get("explanation")
-        
-        if not q_text or not opt_a or not opt_b or not opt_c or not opt_d:
-            continue
-
-        if corr not in ["a", "b", "c", "d"]:
-            match = re.search(r"\b([a-d])\b", corr)
-            corr = match.group(1) if match else "a"
-
-        new_q = Question(
-            id=uuid.uuid4(),
-            subject_id=subject.id,
-            topic=req.topic,
-            question_text=q_text,
-            option_a=opt_a,
-            option_b=opt_b,
-            option_c=opt_c,
-            option_d=opt_d,
-            correct_answer=corr,
-            explanation=expl,
-            difficulty=difficulty,
-            generated_by_ai=True
-        )
-        db.add(new_q)
-        question_ids.append(new_q.id)
-        
-        # Add to output list (WITHOUT correct_answer or explanation)
-        saved_questions_out.append(QuestionOut(
-            id=new_q.id,
-            subject_id=subject.id,
-            subject_name=subject.name,
-            topic=req.topic,
-            difficulty=difficulty,
-            question_text=q_text,
-            option_a=opt_a,
-            option_b=opt_b,
-            option_c=opt_c,
-            option_d=opt_d,
-            correct_answer="", # Hide it
-            explanation=None, # Hide it
-            created_at=datetime.utcnow()
-        ))
-    
-    db.commit()
-
-    # 5. Create QuizAttempt record
-    attempt = QuizAttempt(
-        id=uuid.uuid4(),
-        student_id=current_user.id,
-        subject_id=subject.id,
-        topic=req.topic,
-        difficulty_used=difficulty,
-        started_at=datetime.utcnow(),
-        total_questions=len(saved_questions_out)
-    )
-    db.add(attempt)
-    db.commit()
-    db.refresh(attempt)
-
-    # 6. Return QuizStartResponse
-    return QuizStartResponse(
-        attempt_id=attempt.id,
-        questions=saved_questions_out,
-        difficulty_used=difficulty,
-        topic=req.topic,
-        subject_name=subject.name,
-        reason=reason
-    )
-
-@router.post("/submit", response_model=QuizSubmitResponse)
-def submit_adaptive_quiz(
-    req: QuizSubmitRequest,
+@router.get("/topics")
+def get_topics_for_subject(
+    subject_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user = Depends(require_student)
 ):
-    # 1. Get QuizAttempt by attempt_id
-    attempt = db.query(QuizAttempt).filter(
-        QuizAttempt.id == req.attempt_id,
-        QuizAttempt.student_id == current_user.id,
-        QuizAttempt.completed_at.is_(None)
-    ).first()
-    
-    if not attempt:
-        raise HTTPException(status_code=404, detail="Active quiz attempt not found")
+    chunks = db.query(ContentChunk.topic_hint, ContentChunk.chunk_index).filter(
+        ContentChunk.subject_id == subject_id,
+        ContentChunk.topic_hint.isnot(None),
+        ContentChunk.topic_hint != ""
+    ).all()
 
-    correct_count = 0
-    per_question_results = []
-    
-    # 2. For each answer in request
-    for ans in req.answers:
-        # a. Get Question from DB
-        question = db.query(Question).filter(Question.id == ans.question_id).first()
-        if not question:
+    if not chunks:
+        return {}
+
+    grouped = {}
+    seen = set()
+    for topic_hint, chunk_index in chunks:
+        topic = topic_hint.strip()
+        if not topic or topic in seen:
             continue
-        
-        # b. Compare selected_answer with question.correct_answer
-        is_correct = (ans.selected_answer.lower() == question.correct_answer.lower())
-        if is_correct:
-            correct_count += 1
-            
-        # c. Create QuizAnswer record
-        db_answer = QuizAnswer(
-            id=uuid.uuid4(),
-            attempt_id=attempt.id,
-            question_id=question.id,
-            selected_answer=ans.selected_answer.lower(),
-            is_correct=is_correct,
-            time_taken_seconds=ans.time_taken_seconds
+        seen.add(topic)
+        unit_num = ((chunk_index or 0) // 20) + 1
+        unit_label = f"Unit {unit_num}"
+        if unit_label not in grouped:
+            grouped[unit_label] = []
+        grouped[unit_label].append(topic)
+
+    for unit in grouped:
+        grouped[unit].sort()
+
+    return grouped
+
+
+@router.post("/start", response_model=QuizStartResponse)
+async def start_adaptive_quiz(
+    req: QuizStartRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_student)
+):
+    subject = db.query(Subject).filter(Subject.id == req.subject_id, Subject.is_archived == False).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    # 1. Determine topic mode
+    topic_filter = (req.topic or "mixed").strip()
+    is_mixed = topic_filter.lower() == "mixed"
+
+    # Get subject's syllabus topics from chatbot static config
+    from routers.chatbot import SUBJECTS as STATIC_SUBJECTS
+    static_meta = next(
+        (s for s in STATIC_SUBJECTS if s["code"].lower() == subject.code.lower() or s["name"].lower() == subject.name.lower()),
+        None
+    )
+    syllabus_topics = static_meta["topics"] if static_meta else []
+
+    # 2. Check question bank size
+    q_query = db.query(Question).filter(Question.subject_id == subject.id)
+    if not is_mixed:
+        q_query = q_query.filter(Question.topic.ilike(f"%{topic_filter}%"))
+    q_count = q_query.count()
+
+    reason = f"Starting adaptive quiz {'across mixed syllabus topics' if is_mixed else f'on {topic_filter}'}."
+
+    # 3. Populate question bank if too small
+    if q_count < 10:
+        reason += " Populating question bank with AI-generated questions."
+        import random as _random
+        gen_topic = topic_filter
+        if is_mixed and syllabus_topics:
+            gen_topic = _random.choice(syllabus_topics)
+
+        prompt = AI_GENERATION_PROMPT.format(
+            count=15,
+            topic=gen_topic,
+            subject_name=subject.name
         )
-        db.add(db_answer)
-        
-        per_question_results.append(QuestionResult(
-            question_id=question.id,
-            correct_answer=question.correct_answer,
-            selected_answer=ans.selected_answer,
-            is_correct=is_correct,
-            explanation=question.explanation
-        ))
+        try:
+            raw_response = await get_llm_response(
+                messages=[{"role": "user", "content": "Generate the JSON array of questions now."}],
+                system_prompt=prompt,
+                max_tokens=4000
+            )
+            questions_list = parse_ai_questions_json(raw_response)
+            for item in questions_list:
+                q_topic = item.get("topic", gen_topic) if is_mixed else topic_filter
+                new_q = Question(
+                    id=uuid.uuid4(),
+                    subject_id=subject.id,
+                    topic=q_topic,
+                    unit=item.get("unit", "Unit 1"),
+                    question_text=item.get("question") or item.get("question_text"),
+                    option_a=item.get("option_a"),
+                    option_b=item.get("option_b"),
+                    option_c=item.get("option_c"),
+                    option_d=item.get("option_d"),
+                    correct_answer=item.get("correct_answer", "a").lower().strip(),
+                    explanation=item.get("explanation"),
+                    difficulty=item.get("difficulty", "medium").lower().strip(),
+                    estimated_time_seconds=int(item.get("estimated_time_seconds", 30)),
+                    bloom_taxonomy_level=item.get("bloom_taxonomy_level", "Understand"),
+                    generated_by_ai=True
+                )
+                db.add(new_q)
+            db.commit()
+        except Exception as e:
+            print(f"Error generating questions: {e}")
+            if q_count == 0:
+                raise HTTPException(status_code=502, detail="Failed to populate question bank via AI")
 
-    # 3. Calculate score
-    total = len(per_question_results)
-    score = (correct_count / total * 100) if total > 0 else 0
+    # 4. Get baseline difficulty from past performance
+    difficulty, diff_reason = determine_difficulty(current_user.id, subject.id, db)
 
-    # 4. Update QuizAttempt
-    attempt.completed_at = datetime.utcnow()
-    attempt.score = score
-    attempt.correct_count = correct_count
+    # 5. Start session in DB via AdaptiveEngine
+    attempt = AdaptiveEngine.start_session(
+        db=db,
+        student_id=current_user.id,
+        subject_id=subject.id,
+        topic=topic_filter,
+        num_questions=10
+    )
+    attempt.current_difficulty = difficulty
     db.commit()
 
-    # 5. Detect weak chapters
-    weak_chapters = detect_weak_chapters(current_user.id, attempt.subject_id, db)
+    return QuizStartResponse(
+        attempt_id=attempt.id,
+        questions=[],
+        difficulty_used=difficulty,
+        topic=topic_filter,
+        subject_name=subject.name,
+        reason=diff_reason
+    )
 
-    # 6. Build recommendation string
-    recommendation = "Great job! Keep practicing."
-    if weak_chapters:
-        recommendation = f"You should focus more on {weak_chapters[0].topic}."
+@router.get("/next-question/{session_id}", response_model=Optional[AdaptiveQuestionOut])
+def get_next_question(
+    session_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_student)
+):
+    attempt = db.query(QuizAttempt).filter(QuizAttempt.id == session_id).first()
+    available_topics = []
+    if attempt and attempt.subject:
+        from routers.chatbot import SUBJECTS as STATIC_SUBJECTS
+        static_meta = next(
+            (s for s in STATIC_SUBJECTS if s["code"].lower() == attempt.subject.code.lower() or s["name"].lower() == attempt.subject.name.lower()),
+            None
+        )
+        available_topics = static_meta["topics"] if static_meta else []
 
-    # 7. Calculate next_difficulty
-    if score >= 75:
-        next_difficulty = "hard"
-    elif score >= 50:
-        next_difficulty = "medium"
-    else:
-        next_difficulty = "easy"
+    q = AdaptiveEngine.get_next_question(db, session_id, available_topics=available_topics)
+    if not q:
+        return None
 
-    return QuizSubmitResponse(
-        score=score,
-        correct_count=correct_count,
-        total=total,
-        difficulty_used=attempt.difficulty_used,
-        weak_chapters=weak_chapters,
-        recommendation=recommendation,
-        next_difficulty=next_difficulty,
-        per_question_results=per_question_results
+    return AdaptiveQuestionOut(
+        id=q.id,
+        subject_id=q.subject_id,
+        subject_name=q.subject.name if q.subject else "Subject",
+        topic=q.topic,
+        difficulty=q.difficulty,
+        question_text=q.question_text,
+        option_a=q.option_a,
+        option_b=q.option_b,
+        option_c=q.option_c,
+        option_d=q.option_d,
+        unit=q.unit,
+        bloom_taxonomy_level=q.bloom_taxonomy_level,
+        estimated_time_seconds=q.estimated_time_seconds
+    )
+
+@router.post("/answer", response_model=SingleAnswerResponse)
+def submit_single_answer(
+    req: SingleAnswerSubmit,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_student)
+):
+    res = AdaptiveEngine.evaluate_answer(
+        db=db,
+        session_id=req.attempt_id,
+        question_id=req.question_id,
+        selected_option=req.selected_answer,
+        time_taken_seconds=req.time_taken_seconds
+    )
+    if "error" in res:
+        raise HTTPException(status_code=400, detail=res["error"])
+        
+    return SingleAnswerResponse(
+        is_correct=res["is_correct"],
+        correct_answer=res["correct_answer"],
+        explanation=res["explanation"],
+        next_difficulty=res["next_difficulty"],
+        questions_answered=res["questions_answered"]
+    )
+
+@router.get("/report/{session_id}", response_model=QuizReportResponse)
+def get_quiz_report(
+    session_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_student)
+):
+    from schemas.adaptive_quiz import TimeAnalysis, DifficultyProgressionItem
+    report = AdaptiveEngine.generate_session_report(db, session_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    ta = report.get("time_analysis", {})
+    dp = report.get("difficulty_progression", [])
+
+    return QuizReportResponse(
+        session_id=uuid.UUID(report["session_id"]),
+        score=report["score"],
+        correct_count=report["correct_count"],
+        total_questions=report["total_questions"],
+        difficulty_accuracy=report["difficulty_accuracy"],
+        bloom_accuracy=report["bloom_accuracy"],
+        unit_accuracy=report["unit_accuracy"],
+        weak_topics=[
+            WeakTopicDetail(
+                topic=w["topic"],
+                accuracy=w["accuracy"],
+                total_attempts=w["total_attempts"]
+            ) for w in report["weak_topics"]
+        ],
+        strong_topics=report.get("strong_topics", []),
+        recommended_revision_topics=report.get("recommended_revision_topics", []),
+        difficulty_progression=[
+            DifficultyProgressionItem(
+                question_num=d["question_num"],
+                difficulty=d["difficulty"],
+                is_correct=d["is_correct"],
+                topic=d["topic"]
+            ) for d in dp
+        ],
+        time_analysis=TimeAnalysis(
+            total_time_seconds=ta.get("total_time_seconds", 0),
+            avg_time_per_question_seconds=ta.get("avg_time_per_question_seconds", 0.0),
+            time_efficiency=ta.get("time_efficiency", "Optimal")
+        ),
+        predicted_readiness=report["predicted_readiness"],
+        readiness_label=report["readiness_label"],
+        subject_name=report["subject_name"]
     )
 
 @router.get("/history", response_model=List[QuizHistoryItem])
@@ -324,18 +379,16 @@ def get_quiz_history(
     db: Session = Depends(get_db),
     current_user = Depends(require_student)
 ):
-    attempts = db.query(QuizAttempt, Subject.name.label("subject_name")).join(
-        Subject, QuizAttempt.subject_id == Subject.id
-    ).filter(
+    attempts = db.query(QuizAttempt).filter(
         QuizAttempt.student_id == current_user.id,
-        Subject.is_archived == False
+        QuizAttempt.completed_at.isnot(None)
     ).order_by(desc(QuizAttempt.started_at)).limit(20).all()
     
     history = []
-    for attempt, subject_name in attempts:
+    for attempt in attempts:
         history.append(QuizHistoryItem(
             id=attempt.id,
-            subject_name=subject_name,
+            subject_name=attempt.subject.name if attempt.subject else "Subject",
             topic=attempt.topic or "Mixed",
             score=attempt.score,
             difficulty_used=attempt.difficulty_used,
@@ -346,9 +399,119 @@ def get_quiz_history(
         ))
     return history
 
-@router.get("/weak-areas", response_model=List[WeakChapter])
-def get_weak_areas(
+@router.get("/history/{student_id}", response_model=List[QuizHistoryItem])
+def get_student_quiz_history(
+    student_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user = Depends(require_student)
 ):
-    return detect_weak_chapters(current_user.id, None, db)
+    attempts = db.query(QuizAttempt).filter(
+        QuizAttempt.student_id == student_id,
+        QuizAttempt.completed_at.isnot(None)
+    ).order_by(desc(QuizAttempt.started_at)).limit(20).all()
+    
+    history = []
+    for attempt in attempts:
+        history.append(QuizHistoryItem(
+            id=attempt.id,
+            subject_name=attempt.subject.name if attempt.subject else "Subject",
+            topic=attempt.topic or "Mixed",
+            score=attempt.score,
+            difficulty_used=attempt.difficulty_used,
+            started_at=attempt.started_at,
+            completed_at=attempt.completed_at,
+            correct_count=attempt.correct_count,
+            total_questions=attempt.total_questions
+        ))
+    return history
+
+@router.post("/explain", response_model=ExplainResponse)
+async def explain_incorrect_answer(
+    req: ExplainRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_student)
+):
+    question = db.query(Question).filter(Question.id == req.question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+        
+    prompt = EXPLAIN_PROMPT.format(
+        question_text=question.question_text,
+        option_a=question.option_a,
+        option_b=question.option_b,
+        option_c=question.option_c,
+        option_d=question.option_d,
+        correct_answer=question.correct_answer.upper(),
+        student_answer=req.student_answer.upper(),
+        subject_name=question.subject.name if question.subject else "Syllabus Subject",
+        topic=question.topic,
+        unit=question.unit or "General"
+    )
+    
+    try:
+        explanation = await get_llm_response(
+            messages=[{"role": "user", "content": "Generate the explanation now."}],
+            system_prompt=prompt,
+            max_tokens=500
+        )
+        return ExplainResponse(explanation=explanation.strip())
+    except Exception as e:
+        return ExplainResponse(explanation=question.explanation or "No further explanation available.")
+
+@router.get("/admin/quiz-analytics", response_model=AdminQuizAnalyticsResponse)
+def get_admin_quiz_analytics(
+    db: Session = Depends(get_db),
+    current_user = Depends(require_hod_or_admin)
+):
+    # 1. Heatmap: Subject (rows) vs Units (columns) with avg accuracy
+    results = db.query(
+        Subject.name.label("subject_name"),
+        Question.unit,
+        func.count(QuizAnswer.id).label("total"),
+        func.sum(cast(QuizAnswer.is_correct, Integer)).label("correct")
+    ).join(Question, QuizAnswer.question_id == Question.id)\
+     .join(Subject, Question.subject_id == Subject.id)\
+     .group_by(Subject.name, Question.unit).all()
+
+    subject_units = {}
+    for row in results:
+        sub = row.subject_name
+        unit = row.unit or "General"
+        acc = (row.correct / row.total * 100) if row.total > 0 else 0.0
+        if sub not in subject_units:
+            subject_units[sub] = {"subject": sub}
+        subject_units[sub][unit] = round(acc, 1)
+    
+    heatmap_data = list(subject_units.values())
+
+    # 2. Frequently Wrong: Questions with error counts
+    all_answers = db.query(
+        Question.question_text,
+        Subject.name.label("subject_name"),
+        Question.topic,
+        func.count(QuizAnswer.id).label("total_attempts"),
+        func.sum(cast(QuizAnswer.is_correct, Integer)).label("correct_count")
+    ).join(Question, QuizAnswer.question_id == Question.id)\
+     .join(Subject, Question.subject_id == Subject.id)\
+     .group_by(Question.id, Question.question_text, Subject.name, Question.topic)\
+     .all()
+
+    freq_wrong = []
+    for row in all_answers:
+        err_count = row.total_attempts - (row.correct_count or 0)
+        if err_count > 0:
+            freq_wrong.append(FrequentlyWrongQuestion(
+                question_text=row.question_text,
+                subject_name=row.subject_name,
+                topic=row.topic,
+                error_count=int(err_count),
+                total_attempts=int(row.total_attempts)
+            ))
+    
+    freq_wrong.sort(key=lambda x: x.error_count, reverse=True)
+    freq_wrong = freq_wrong[:10]
+
+    return AdminQuizAnalyticsResponse(
+        heatmap=heatmap_data,
+        frequently_wrong=freq_wrong
+    )

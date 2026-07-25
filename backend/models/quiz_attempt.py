@@ -10,8 +10,8 @@ class QuizAttempt(Base):
     __tablename__ = "quiz_attempts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    student_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False, index=True)
     topic = Column(String(200), nullable=True)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
@@ -21,6 +21,9 @@ class QuizAttempt(Base):
     difficulty_used = Column(
         Enum("easy", "medium", "hard", name="quiz_difficulty_enum"), nullable=False
     )
+    current_difficulty = Column(String(50), default="medium", nullable=False)
+    consecutive_correct = Column(Integer, default=0, nullable=False)
+    consecutive_wrong = Column(Integer, default=0, nullable=False)
 
     # Relationships
     student = relationship("User", back_populates="quiz_attempts")

@@ -3,8 +3,10 @@ import { Bell, Check, Clock, X, BellOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function NotificationBell() {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -40,9 +42,80 @@ export default function NotificationBell() {
   };
 
   useEffect(() => {
+    if (!user?.id) return;
+
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+
+    let socket = null;
+    let pollInterval = null;
+    let reconnectTimeout = null;
+
+    const connectWebSocket = () => {
+      try {
+        const wsUrl = `ws://${new URL(api.defaults.baseURL || "http://localhost:8000").host}/api/notifications/ws/${user.id}`;
+        socket = new WebSocket(wsUrl);
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            // Dispatch message globally for real-time dashboard listeners
+            window.dispatchEvent(new CustomEvent('ws-message', { detail: data }));
+
+            if (data.type === 'notification') {
+              const newNotif = data.notification;
+              
+              const formattedNotif = {
+                id: newNotif.id,
+                title: newNotif.title,
+                body: newNotif.message,
+                sent_at: newNotif.created_at || new Date().toISOString(),
+                is_read: false
+              };
+
+              setNotifications(prev => [formattedNotif, ...prev]);
+              setUnreadCount(prev => prev + 1);
+            }
+          } catch (err) {
+            console.error("Error handling websocket notification:", err);
+          }
+        };
+
+        socket.onclose = () => {
+          console.log("Notification WebSocket closed. Reconnecting in 5 seconds...");
+          reconnectTimeout = setTimeout(connectWebSocket, 5000);
+        };
+
+        socket.onerror = (err) => {
+          console.warn("Notification WebSocket error", err);
+          socket.close();
+        };
+
+      } catch (err) {
+        console.error("Failed to establish WebSocket connection", err);
+      }
+    };
+
+    connectWebSocket();
+
+    pollInterval = setInterval(fetchNotifications, 30000);
+
+    return () => {
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      fetchNotifications();
+    };
+    window.addEventListener('badge-update', handleUpdate);
+    return () => window.removeEventListener('badge-update', handleUpdate);
   }, []);
 
   useEffect(() => {
@@ -63,6 +136,34 @@ export default function NotificationBell() {
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (err) {
       console.error("Failed to mark read", err);
+    }
+  };
+
+  const handleNotificationClick = async (notif) => {
+    await handleMarkAsRead(notif.id || notif.reference_id, notif.is_read);
+    setIsOpen(false);
+    
+    const role = user?.role;
+    if (notif.module === 'approvals') {
+      navigate('/admin/students');
+    } else if (notif.module === 'leaves') {
+      navigate(role === 'faculty' ? '/admin/leave-status' : '/admin/leave-requests');
+    } else if (notif.module === 'ai_moderation') {
+      navigate(role === 'faculty' ? '/admin/ai-answer-review' : '/admin/content-moderation');
+    } else if (notif.module === 'skill_review') {
+      navigate('/admin/notes?tab=review');
+    } else if (notif.module === 'doubts') {
+      if (role === 'student') {
+        navigate(`/student/doubts/${notif.reference_id || notif.id}`);
+      } else {
+        navigate(`/admin/doubts/${notif.reference_id || notif.id}`);
+      }
+    } else {
+      if (role === 'student') {
+        navigate('/student');
+      } else {
+        navigate('/admin/notifications');
+      }
     }
   };
 
@@ -180,12 +281,12 @@ export default function NotificationBell() {
             ) : (
               <ul className={`divide-y ${isLight ? 'divide-slate-100' : 'divide-white/5'}`}>
                 {notifications.map(notif => {
-                  const type = parseType(notif.body)
-                  const message = parseBody(notif.body)
+                  const type = parseType(notif.body || notif.message)
+                  const message = parseBody(notif.body || notif.message)
                   return (
                     <li 
                       key={notif.id}
-                      onClick={() => handleMarkAsRead(notif.id, notif.is_read)}
+                      onClick={() => handleNotificationClick(notif)}
                       className={`px-4 py-3.5 cursor-pointer transition-all border-l-4 ${
                         isLight 
                           ? !notif.is_read 
@@ -221,7 +322,7 @@ export default function NotificationBell() {
                         isLight ? 'text-slate-400' : 'text-white/35'
                       }`}>
                         <Clock className="w-3 h-3" />
-                        {getTimeAgo(notif.sent_at)}
+                        {getTimeAgo(notif.sent_at || notif.created_at)}
                       </div>
                     </li>
                   )

@@ -1,6 +1,13 @@
 import api from './api';
 
 const quizService = {
+  getTopics: async (subjectId) => {
+    const response = await api.get('/adaptive-quiz/topics', {
+      params: { subject_id: subjectId }
+    });
+    return response.data;
+  },
+
   startQuiz: async (subjectId, topic) => {
     const response = await api.post('/adaptive-quiz/start', {
       subject_id: subjectId,
@@ -9,11 +16,23 @@ const quizService = {
     return response.data;
   },
 
-  submitQuiz: async (attemptId, answers) => {
-    const response = await api.post('/adaptive-quiz/submit', {
+  getNextQuestion: async (sessionId) => {
+    const response = await api.get(`/adaptive-quiz/next-question/${sessionId}`);
+    return response.data;
+  },
+
+  submitAnswer: async (attemptId, questionId, selectedAnswer, timeTakenSeconds) => {
+    const response = await api.post('/adaptive-quiz/answer', {
       attempt_id: attemptId,
-      answers,
+      question_id: questionId,
+      selected_answer: selectedAnswer,
+      time_taken_seconds: timeTakenSeconds
     });
+    return response.data;
+  },
+
+  getReport: async (sessionId) => {
+    const response = await api.get(`/adaptive-quiz/report/${sessionId}`);
     return response.data;
   },
 
@@ -26,6 +45,19 @@ const quizService = {
     const response = await api.get('/adaptive-quiz/weak-areas');
     return response.data;
   },
+
+  getAdminAnalytics: async () => {
+    const response = await api.get('/adaptive-quiz/admin/quiz-analytics');
+    return response.data;
+  },
+
+  getExplanation: async (questionId, studentAnswer) => {
+    const response = await api.post('/adaptive-quiz/explain', {
+      question_id: questionId,
+      student_answer: studentAnswer
+    });
+    return response.data;
+  }
 };
 
 export default quizService;

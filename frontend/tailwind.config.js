@@ -12,9 +12,9 @@ export default {
           950: 'var(--bg-navy-950)',
         },
         brand: {
-          DEFAULT: '#3B82F6',
-          dark: '#2563EB',
-          light: '#60A5FA',
+          DEFAULT: 'var(--color-primary, #7B8CFF)',
+          dark: 'var(--color-primary-dark, #6A7BF5)',
+          light: 'var(--color-primary-light, #BAC7FB)',
         },
         success: '#22C55E',
         warning: '#F59E0B',

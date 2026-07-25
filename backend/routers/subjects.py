@@ -1,22 +1,60 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from database import get_db
 from models.subject import Subject
 from models.note import Note
 from models.question import Question
 from models.content_chunks import ContentChunk
+from models.faculty_subject_assignment import FacultySubjectAssignment
 from schemas.subject import SubjectCreate, SubjectUpdate, SubjectOut, SubjectWithStats, SubjectArchived
-from utils.dependencies import get_current_user, require_admin
+from utils.dependencies import get_current_user, require_hod_or_admin
 from utils.semester_filter import apply_semester_filter
 import uuid
 import os
+import shutil
 from datetime import datetime, timedelta
 
 router = APIRouter()
 
+def serialize_subject(subject: Subject) -> dict:
+    subj_dict = {
+        "id": subject.id,
+        "name": subject.name,
+        "code": subject.code,
+        "description": subject.description,
+        "created_by": subject.created_by,
+        "created_at": subject.created_at,
+        "color": subject.color,
+        "icon": subject.icon,
+        "is_archived": subject.is_archived,
+        "archived_at": subject.archived_at,
+        "course_id": subject.course_id,
+        "department_id": subject.department_id,
+        "semester_id": subject.semester_id,
+        "semester_number": subject.semester_number,
+        "credit_hours": subject.credit_hours,
+        "syllabus_pdf_url": subject.syllabus_pdf_url,
+        "syllabus_text": subject.syllabus_text,
+        "co_po_mappings": subject.co_po_mappings,
+        "revision_history": subject.revision_history,
+        "ownership_history": subject.ownership_history,
+    }
+    subj_dict["topics_list"] = subject.get_topics()
+    
+    assignments = []
+    for a in subject.faculty_assignments:
+        assignments.append({
+            "id": a.id,
+            "faculty_id": a.faculty_id,
+            "faculty_name": a.faculty.name if a.faculty else None,
+            "role": a.role
+        })
+    subj_dict["faculty_assignments"] = assignments
+    return subj_dict
+
 @router.post("", response_model=SubjectOut, status_code=status.HTTP_201_CREATED)
-def create_subject(subject_data: SubjectCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def create_subject(subject_data: SubjectCreate, db: Session = Depends(get_db), current_user = Depends(require_hod_or_admin)):
     existing = db.query(Subject).filter(Subject.code == subject_data.code.upper()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Subject code already exists")
@@ -29,12 +67,22 @@ def create_subject(subject_data: SubjectCreate, db: Session = Depends(get_db), c
         color=subject_data.color,
         icon=subject_data.icon,
         course_id=uuid.UUID(str(subject_data.course_id)) if subject_data.course_id else None,
-        semester_number=subject_data.semester_number
+        department_id=uuid.UUID(str(subject_data.department_id)) if subject_data.department_id else None,
+        semester_number=subject_data.semester_number,
+        co_po_mappings=subject_data.co_po_mappings,
+        revision_history=subject_data.revision_history,
+        ownership_history=subject_data.ownership_history,
+        credit_hours=subject_data.credit_hours,
+        syllabus_text=subject_data.syllabus_text
     )
+    if subject_data.topics_list:
+        new_subject.set_topics(subject_data.topics_list)
+        
     db.add(new_subject)
     db.commit()
     db.refresh(new_subject)
-    return new_subject
+    
+    return serialize_subject(new_subject)
 
 @router.get("", response_model=list[SubjectWithStats])
 def get_subjects(
@@ -43,13 +91,17 @@ def get_subjects(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    purge_expired_subjects(db)
-    query = db.query(Subject).filter(Subject.is_archived == False)
+    # Note: purge_expired_subjects runs at startup only, not on every GET
+    query = db.query(Subject).options(
+        joinedload(Subject.faculty_assignments).joinedload(FacultySubjectAssignment.faculty)
+    ).filter(Subject.is_archived == False)
+
     
     if current_user.role == "student":
         query = apply_semester_filter(query, Subject, current_user)
+    elif current_user.role == "faculty":
+        query = query.join(FacultySubjectAssignment).filter(FacultySubjectAssignment.faculty_id == current_user.id)
     else:
-        # Admin: optional filter via query params
         if course_id:
             try:
                 query = query.filter(Subject.course_id == uuid.UUID(course_id))
@@ -59,22 +111,31 @@ def get_subjects(
             query = query.filter(Subject.semester_number == semester)
             
     subjects = query.all()
+    if not subjects:
+        return []
+
+    # Bulk aggregate counts with a single query per table (avoid N+1)
+    subject_ids = [s.id for s in subjects]
+    
+    notes_counts = {r[0]: r[1] for r in db.query(Note.subject_id, func.count(Note.id))
+                    .filter(Note.subject_id.in_(subject_ids)).group_by(Note.subject_id).all()}
+    questions_counts = {r[0]: r[1] for r in db.query(Question.subject_id, func.count(Question.id))
+                        .filter(Question.subject_id.in_(subject_ids)).group_by(Question.subject_id).all()}
+    chunks_counts = {r[0]: r[1] for r in db.query(ContentChunk.subject_id, func.count(ContentChunk.id))
+                     .filter(ContentChunk.subject_id.in_(subject_ids)).group_by(ContentChunk.subject_id).all()}
     
     result = []
     for s in subjects:
-        notes_count = db.query(func.count(Note.id)).filter(Note.subject_id == s.id).scalar() or 0
-        questions_count = db.query(func.count(Question.id)).filter(Question.subject_id == s.id).scalar() or 0
-        chunks_count = db.query(func.count(ContentChunk.id)).filter(ContentChunk.subject_id == s.id).scalar() or 0
         result.append({
-            **s.__dict__,
-            "notes_count": notes_count,
-            "questions_count": questions_count,
-            "chunks_count": chunks_count
+            **serialize_subject(s),
+            "notes_count": notes_counts.get(s.id, 0),
+            "questions_count": questions_counts.get(s.id, 0),
+            "chunks_count": chunks_counts.get(s.id, 0)
         })
     return result
 
 @router.get("/archived", response_model=list[SubjectArchived])
-def get_archived_subjects(db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def get_archived_subjects(db: Session = Depends(get_db), current_user = Depends(require_hod_or_admin)):
     purge_expired_subjects(db)
     subjects = db.query(Subject).filter(Subject.is_archived == True).all()
     
@@ -92,7 +153,7 @@ def get_archived_subjects(db: Session = Depends(get_db), current_user = Depends(
             remaining_days = max(0, 15 - diff.days)
             
         result.append({
-            **s.__dict__,
+            **serialize_subject(s),
             "notes_count": notes_count,
             "questions_count": questions_count,
             "chunks_count": chunks_count,
@@ -102,6 +163,10 @@ def get_archived_subjects(db: Session = Depends(get_db), current_user = Depends(
 
 @router.get("/{id}", response_model=SubjectWithStats)
 def get_subject(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    if current_user.role == "faculty":
+        from utils.dependencies import verify_faculty_owns_subject
+        verify_faculty_owns_subject(db, current_user.id, id)
+        
     subject = db.query(Subject).filter(Subject.id == id).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
@@ -111,14 +176,14 @@ def get_subject(id: uuid.UUID, db: Session = Depends(get_db), current_user = Dep
     chunks_count = db.query(func.count(ContentChunk.id)).filter(ContentChunk.subject_id == subject.id).scalar() or 0
     
     return {
-        **subject.__dict__,
+        **serialize_subject(subject),
         "notes_count": notes_count,
         "questions_count": questions_count,
         "chunks_count": chunks_count
     }
 
 @router.put("/{id}", response_model=SubjectOut)
-def update_subject(id: uuid.UUID, subject_data: SubjectUpdate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def update_subject(id: uuid.UUID, subject_data: SubjectUpdate, db: Session = Depends(get_db), current_user = Depends(require_hod_or_admin)):
     subject = db.query(Subject).filter(Subject.id == id).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
@@ -134,16 +199,20 @@ def update_subject(id: uuid.UUID, subject_data: SubjectUpdate, db: Session = Dep
             value = value.upper().strip()
         elif key == "name":
             value = value.strip()
-        elif key == "course_id" and value:
+        elif key in ["course_id", "department_id"] and value:
             value = uuid.UUID(str(value))
+        elif key == "topics_list":
+            subject.set_topics(value)
+            continue
         setattr(subject, key, value)
         
     db.commit()
     db.refresh(subject)
-    return subject
+    
+    return serialize_subject(subject)
 
 @router.delete("/{id}")
-def delete_subject(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def delete_subject(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(require_hod_or_admin)):
     subject = db.query(Subject).filter(Subject.id == id, Subject.is_archived == False).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
@@ -153,9 +222,8 @@ def delete_subject(id: uuid.UUID, db: Session = Depends(get_db), current_user = 
     db.commit()
     return {"message": "Subject moved to Archive. It can be restored within 15 days before being permanently deleted."}
 
-
 @router.post("/{id}/restore", response_model=SubjectOut)
-def restore_subject(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def restore_subject(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(require_hod_or_admin)):
     subject = db.query(Subject).filter(Subject.id == id, Subject.is_archived == True).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Archived subject not found")
@@ -164,15 +232,78 @@ def restore_subject(id: uuid.UUID, db: Session = Depends(get_db), current_user =
     subject.archived_at = None
     db.commit()
     db.refresh(subject)
-    return subject
+    
+    return serialize_subject(subject)
 
 @router.delete("/{id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
-def delete_subject_permanent(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def delete_subject_permanent(id: uuid.UUID, db: Session = Depends(get_db), current_user = Depends(require_hod_or_admin)):
     subject = db.query(Subject).filter(Subject.id == id).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
     perform_permanent_cascade_delete(id, db)
     return None
+
+@router.post("/{id}/syllabus", response_model=SubjectOut)
+async def upload_subject_syllabus(
+    id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_hod_or_admin)
+):
+    subject = db.query(Subject).filter(Subject.id == id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+        
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext != '.pdf':
+        raise HTTPException(status_code=400, detail="Only PDF syllabus uploads are allowed")
+        
+    upload_dir = os.path.join("uploads", "syllabus")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    unique_filename = f"{uuid.uuid4()}_{file.filename}"
+    file_path = os.path.join(upload_dir, unique_filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    # Delete old syllabus file if exists
+    if subject.syllabus_pdf_url:
+        old_path = os.path.join(".", subject.syllabus_pdf_url.lstrip("/"))
+        if os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except Exception as e:
+                print(f"Error removing old syllabus file {old_path}: {e}")
+                
+    subject.syllabus_pdf_url = f"/uploads/syllabus/{unique_filename}"
+    db.commit()
+    db.refresh(subject)
+    
+    return serialize_subject(subject)
+
+@router.delete("/{id}/syllabus", response_model=SubjectOut)
+def delete_subject_syllabus(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_hod_or_admin)
+):
+    subject = db.query(Subject).filter(Subject.id == id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+        
+    if subject.syllabus_pdf_url:
+        file_path = os.path.join(".", subject.syllabus_pdf_url.lstrip("/"))
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"Error removing syllabus file {file_path}: {e}")
+        subject.syllabus_pdf_url = None
+        db.commit()
+        db.refresh(subject)
+        
+    return serialize_subject(subject)
 
 def purge_expired_subjects(db: Session):
     cutoff = datetime.utcnow() - timedelta(days=15)
@@ -215,7 +346,7 @@ def perform_permanent_cascade_delete(id: uuid.UUID, db: Session):
             db.query(DoubtUpvote).filter(DoubtUpvote.answer_id.in_(answer_ids)).delete(synchronize_session=False)
             
         # Delete doubt question upvotes
-        db.query(DoubtQuestionUpvote).filter(DoubtQuestionUpvote.doubt_id.in_(doubt_ids)).delete(synchronize_session=False)
+        db.query(DoubtQuestionUpvote).filter(DoubtQuestionUpvote.user_id.in_(doubt_ids)).delete(synchronize_session=False)
         # Delete doubt answers
         db.query(DoubtAnswer).filter(DoubtAnswer.doubt_id.in_(doubt_ids)).delete(synchronize_session=False)
         # Delete doubts

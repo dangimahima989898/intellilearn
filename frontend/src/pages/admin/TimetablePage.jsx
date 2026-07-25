@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Calendar, Plus, Trash2, X, Clock, MapPin, AlertCircle, Loader2 } from 'lucide-react'
 import adminService from '../../services/adminService'
+import api from '../../services/api'
 import toast from 'react-hot-toast'
 import PageWrapper from '../../components/PageWrapper'
 import EmptyState from '../../components/EmptyState'
@@ -9,6 +10,7 @@ import CourseSemesterSelector from '../../components/CourseSemesterSelector'
 export default function TimetablePage() {
   const [slots, setSlots] = useState([])
   const [subjects, setSubjects] = useState([]) // For looking up all subject names/colors
+  const [facultyList, setFacultyList] = useState([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [activeMobileDay, setActiveMobileDay] = useState('Monday')
@@ -24,6 +26,7 @@ export default function TimetablePage() {
 
   const [formData, setFormData] = useState({
     subject_id: '',
+    faculty_id: '',
     day_of_week: 'Monday',
     start_time: '09:00',
     end_time: '10:00',
@@ -46,15 +49,20 @@ export default function TimetablePage() {
   const fetchData = async (courseId = null, semester = null) => {
     try {
       setLoading(true)
-      const [slotsData, subjectsData] = await Promise.all([
+      const [slotsRes, subjectsRes, facultyRes] = await Promise.allSettled([
         adminService.getTimetable(courseId || null, semester || null),
-        adminService.getSubjects()
+        adminService.getSubjects(),
+        api.get('/api/v1/hod/faculty')
       ])
-      setSlots(slotsData || [])
-      setSubjects(subjectsData || [])
+      setSlots(slotsRes.status === 'fulfilled' ? (slotsRes.value || []) : [])
+      setSubjects(subjectsRes.status === 'fulfilled' ? (subjectsRes.value || []) : [])
+      setFacultyList(facultyRes.status === 'fulfilled' ? (facultyRes.value.data || []) : [])
+
+      if (slotsRes.status === 'rejected') console.warn('Timetable slots load failed:', slotsRes.reason?.message)
+      if (subjectsRes.status === 'rejected') console.warn('Timetable subjects load failed:', subjectsRes.reason?.message)
+      if (facultyRes.status === 'rejected') console.warn('Timetable faculty load failed:', facultyRes.reason?.message)
     } catch (error) {
       console.error("Timetable fetch error:", error)
-      toast.error('Failed to load timetable')
       setSlots([])
       setSubjects([])
     } finally {
@@ -111,6 +119,7 @@ export default function TimetablePage() {
       setIsModalOpen(false)
       setFormData({ 
         subject_id: '',
+        faculty_id: '',
         day_of_week: 'Monday',
         start_time: '09:00',
         end_time: '10:00',
@@ -164,6 +173,15 @@ export default function TimetablePage() {
     const topOffset = (startMins / 60) * 64
     const heightOffset = (duration / 60) * 64
 
+    const hasLeaveConflict = slot.faculty_on_leave
+    const borderStyle = hasLeaveConflict 
+      ? { border: '2px solid #EF4444', borderLeft: '4px solid #EF4444' } 
+      : { borderLeftColor: subjectColor }
+
+    const bgStyle = hasLeaveConflict 
+      ? 'rgba(239, 68, 68, 0.15)' 
+      : `${subjectColor}20`
+
     return (
       <div 
         key={slot.id}
@@ -171,8 +189,8 @@ export default function TimetablePage() {
         style={{
           top: `${topOffset}px`,
           height: `${heightOffset}px`,
-          backgroundColor: `${subjectColor}20`,
-          borderLeftColor: subjectColor
+          backgroundColor: bgStyle,
+          ...borderStyle
         }}
       >
         <button 
@@ -185,6 +203,11 @@ export default function TimetablePage() {
         <p className="font-semibold text-white text-[11px] sm:text-xs truncate leading-tight pr-4">
           {slot.subject_name || getSubjectName(slot.subject_id)}
         </p>
+        {slot.faculty_name && (
+          <div className="text-[10px] text-white/50 truncate font-semibold mt-0.5">
+            👤 {slot.faculty_name}
+          </div>
+        )}
         <div className="flex items-center gap-1 mt-1 text-[9px] sm:text-[10px] text-white/60 truncate font-medium">
           <Clock className="w-3 h-3 shrink-0 text-white/40" />
           {slot.start_time} - {slot.end_time}
@@ -193,6 +216,12 @@ export default function TimetablePage() {
           <div className="flex items-center gap-1 mt-0.5 text-[9px] sm:text-[10px] text-white/60 truncate font-medium">
             <MapPin className="w-3 h-3 shrink-0 text-white/40" />
             {slot.room}
+          </div>
+        )}
+        {hasLeaveConflict && (
+          <div className="flex items-center gap-1 mt-1 text-[9px] text-red-400 font-extrabold uppercase animate-pulse">
+            <AlertCircle className="w-3 h-3 text-red-500 shrink-0" />
+            Faculty on Leave
           </div>
         )}
       </div>
@@ -379,7 +408,7 @@ export default function TimetablePage() {
                 <select
                   required
                   value={formData.subject_id}
-                  onChange={(e) => setFormData({...formData, subject_id: e.target.value})}
+                  onChange={(e) => setFormData({...formData, subject_id: e.target.value, faculty_id: ''})}
                   disabled={modalSubjectsLoading || !modalCourseId}
                   className="w-full bg-[#0A0F1E] border border-white/15 disabled:opacity-40 disabled:border-white/5 rounded-xl px-4 py-3 text-white disabled:text-white/30 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50 transition-all appearance-none cursor-pointer"
                 >
@@ -389,6 +418,28 @@ export default function TimetablePage() {
                   {modalSubjects.map(sub => (
                     <option key={sub.id} value={sub.id} className="bg-[#0f172a] text-white">{sub.name}</option>
                   ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-white/70 text-sm font-medium mb-1.5">Assigned Faculty</label>
+                <select
+                  required
+                  value={formData.faculty_id}
+                  onChange={(e) => setFormData({...formData, faculty_id: e.target.value})}
+                  disabled={!formData.subject_id}
+                  className="w-full bg-[#0A0F1E] border border-white/15 disabled:opacity-40 disabled:border-white/5 rounded-xl px-4 py-3 text-white disabled:text-white/30 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="" disabled>
+                    {!formData.subject_id ? "Select Subject First..." : facultyList.filter(fac => fac.subjects?.some(s => s.subject_id === formData.subject_id)).length === 0 ? "No faculty assigned to this subject" : "Select a faculty..."}
+                  </option>
+                  {facultyList
+                    .filter(fac => fac.subjects?.some(s => s.subject_id === formData.subject_id))
+                    .map(fac => (
+                      <option key={fac.id} value={fac.id} className="bg-[#0f172a] text-white">
+                        {fac.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 

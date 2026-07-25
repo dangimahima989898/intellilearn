@@ -1,0 +1,318 @@
+# Requirements Document
+
+## Introduction
+
+This document specifies requirements for enhancing the existing Student Home Dashboard in the IntelliLearn university ERP system. The enhancement transforms the dashboard from a basic informational display into an AI-powered personal academic assistant. The existing layout structure, sidebar, top navigation, spacing, colors (purple accent theme), typography, and white-card/rounded-corner design language are preserved. Every widget must provide direct academic value to the student, answering questions such as: What should I study today? What is due next? Which subject am I weak in? Am I at risk academically? What does AI recommend?
+
+## Glossary
+
+- **Dashboard**: The Student Home page displayed after login, composed of multiple widget cards
+- **Widget**: A self-contained UI card on the Dashboard displaying specific academic information
+- **Student**: An authenticated user with role "student" in the IntelliLearn system
+- **AI_Engine**: The backend AI service that generates personalized recommendations, study plans, and insights using student performance data
+- **Study_Planner**: The AI-generated personalized daily study plan widget
+- **AI_Tutor**: The conversational AI assistant that helps students with academic queries
+- **Practice_Generator**: The AI component that generates practice questions filtered by subject, unit, difficulty, and question type
+- **Adaptive_Quiz**: The quiz system that adjusts difficulty based on student performance
+- **Schedule_Service**: The backend service that retrieves today's timetable entries for the student
+- **Deadline_Service**: The backend service that aggregates assignments, quizzes, lab submissions, exams, and project deadlines
+- **Performance_Service**: The backend service providing quiz scores, assignment grades, and accuracy metrics
+- **Attendance_Service**: The backend service computing attendance percentages per subject and overall
+- **Weak_Topics_Engine**: The AI component that identifies topics with below-threshold accuracy
+- **Placement_Readiness_Service**: The backend service computing placement preparation metrics from test attempts, resume data, and coding progress
+- **Notification_Service**: The backend service that filters and delivers academic-only notifications
+- **Priority_Indicator**: A color-coded visual marker representing urgency level (red for high, orange for medium, green for low)
+- **Learning_Streak**: The count of consecutive days a student has engaged with learning activities
+- **Heatmap**: A visual grid displaying study activity frequency across days of the week
+
+## Requirements
+
+### Requirement 1: Personalized Academic Hero Banner
+
+**User Story:** As a student, I want to see a personalized academic overview banner when I open my dashboard, so that I can immediately understand my current academic status at a glance.
+
+#### Acceptance Criteria
+
+1. WHEN a student loads the Dashboard, THE Dashboard SHALL display a Hero Banner containing the student name, current semester number, and department name retrieved from the student profile.
+2. WHEN a student loads the Dashboard, THE Dashboard SHALL display today's attendance percentage as a whole number (0 to 100) computed by the Attendance_Service within the Hero Banner.
+3. WHEN a student has a scheduled class remaining today, THE Dashboard SHALL display the next upcoming class name and start time within the Hero Banner.
+4. IF no classes remain for today, THEN THE Dashboard SHALL display "No more classes today" in the next class section of the Hero Banner.
+5. WHEN a student loads the Dashboard, THE Dashboard SHALL display the count of pending assignments (assignments with a due date in the future that the student has not yet submitted) retrieved from the Deadline_Service within the Hero Banner.
+6. WHEN a student loads the Dashboard and at least one upcoming quiz is scheduled, THE Dashboard SHALL display the next upcoming quiz date and subject within the Hero Banner.
+7. IF no upcoming quizzes are scheduled for the student, THEN THE Dashboard SHALL display "No upcoming quizzes" in the quiz section of the Hero Banner.
+8. WHEN a student loads the Dashboard, THE Dashboard SHALL display the current Learning_Streak day count within the Hero Banner.
+9. IF any backend service (Attendance_Service, Deadline_Service, or Schedule_Service) fails to respond within 5 seconds, THEN THE Dashboard SHALL display the Hero Banner with a placeholder indicator in the affected section stating that data is temporarily unavailable, while still rendering all other sections with available data.
+
+### Requirement 2: AI Study Planner Widget
+
+**User Story:** As a student, I want an AI-generated personalized study plan each day, so that I know exactly what to study and for how long based on my performance and upcoming deadlines.
+
+#### Acceptance Criteria
+
+1. WHEN a student views the Dashboard, THE Study_Planner SHALL display a list of between 3 and 7 recommended study tasks generated by the AI_Engine based on the student's weak topics, upcoming deadlines, and recent performance.
+2. THE Study_Planner SHALL display for each task: the task description, the associated subject name, and an estimated study time in minutes (between 5 and 60 minutes per task).
+3. THE Study_Planner SHALL display a total estimated study time as the sum of individual task times.
+4. THE Study_Planner SHALL provide a "Continue Learning" button that navigates the student to the first recommended study resource.
+5. WHEN a student clicks the "Regenerate Plan" button, THE Study_Planner SHALL request a new study plan from the AI_Engine and display the updated tasks within 3 seconds.
+6. IF the AI_Engine fails to generate a study plan, THEN THE Study_Planner SHALL display a fallback message "Unable to generate plan. Please try again later." with a retry button.
+7. IF the student has no weak topics, no upcoming deadlines, and no recent performance data, THEN THE Study_Planner SHALL display a general onboarding study plan suggesting the student explore their enrolled subjects.
+
+### Requirement 3: Enhanced AI Tutor Card
+
+**User Story:** As a student, I want quick-action buttons on the AI Tutor card, so that I can rapidly access common AI assistance functions without navigating away from the dashboard.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display an AI Tutor card with six quick-action buttons: "Ask AI", "Summarize Lecture", "Explain Topic", "Generate Flashcards", "Prepare for Viva", and "Resume Last Chat".
+2. WHEN a student clicks "Ask AI", THE AI_Tutor SHALL navigate the student to the chatbot interface with an empty new chat session ready for input within 2 seconds.
+3. WHEN a student clicks "Summarize Lecture", THE AI_Tutor SHALL display a selection prompt for subject and note, and upon selection SHALL generate and display a summary of the selected note within 10 seconds.
+4. WHEN a student clicks "Explain Topic", THE AI_Tutor SHALL display a selection prompt for subject and topic, and upon selection SHALL open a chat session with the AI_Engine pre-loaded with a request to explain the selected topic.
+5. WHEN a student clicks "Generate Flashcards", THE AI_Tutor SHALL display a selection prompt for subject and topic, and upon selection SHALL generate between 5 and 15 flashcards for the selected topic within 10 seconds.
+6. WHEN a student clicks "Prepare for Viva", THE AI_Tutor SHALL display a selection prompt for subject and topic, and upon selection SHALL open a chat session configured for viva-style question-and-answer practice on the selected topic.
+7. WHEN a student clicks "Resume Last Chat", THE AI_Tutor SHALL open the most recent chat session for that student as determined by the latest created_at timestamp in the chat_logs table.
+8. IF no previous chat session exists when a student clicks "Resume Last Chat", THEN THE AI_Tutor SHALL open a new chat session displaying a welcome message that introduces the AI Tutor capabilities and prompts the student to ask a question.
+9. IF the AI_Engine fails to generate content for "Summarize Lecture", "Explain Topic", "Generate Flashcards", or "Prepare for Viva", THEN THE AI_Tutor SHALL display an error message indicating the generation failed and provide a "Retry" button, without losing the student's selected subject and topic.
+
+### Requirement 4: AI Practice Question Generator
+
+**User Story:** As a student, I want to generate practice questions filtered by subject, unit, difficulty, and question type, so that I can target my practice to specific areas of weakness.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display an AI Practice Generator card with filter controls for Subject (required), Unit (optional), Difficulty (Easy, Medium, Hard — required), and Question Type (MCQ, Coding, Theory, Previous Year Style — required).
+2. WHEN a student selects the required filters and clicks "Generate Questions", THE Practice_Generator SHALL display a loading indicator and request questions from the AI_Engine matching the selected criteria, displaying results within 15 seconds.
+3. THE Practice_Generator SHALL display between 5 and 20 generated questions per request. IF the AI_Engine returns fewer than 5 valid questions, THEN THE Practice_Generator SHALL display the available questions with a message indicating fewer questions were generated than expected.
+4. WHEN generated questions are displayed, THE Practice_Generator SHALL show the question text and a "Show Answer" toggle for each question. For MCQ type, options shall be displayed as selectable choices. For Coding and Theory types, an answer text area shall be displayed. For Previous Year Style, the question source year shall be indicated alongside the question text.
+5. IF the Practice_Generator cannot find questions matching the selected filters, THEN THE Practice_Generator SHALL display "No questions available for selected criteria. Try adjusting filters." with the filter panel still visible.
+6. IF the AI_Engine fails to respond or returns an error during question generation, THEN THE Practice_Generator SHALL display an error message indicating the service is temporarily unavailable, along with a "Retry" button, and the filter panel shall remain visible with the student's previous selections preserved.
+7. WHEN a student clicks "Generate Questions" without selecting all required filters (Subject, Difficulty, and Question Type), THE Practice_Generator SHALL highlight the missing required filter fields and display a validation message indicating which selections are needed before generation can proceed.
+
+### Requirement 5: Adaptive Quiz Enhancement Widget
+
+**User Story:** As a student, I want to see my current adaptive quiz status and a recommended next quiz, so that I can continuously improve at the right difficulty level.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display an Adaptive Quiz widget showing the student's current difficulty level (easy, medium, or hard) from the most recent QuizAttempt record, the overall accuracy percentage computed as the average of average_accuracy values across all the student's StudentPerformanceSummary records for the current semester, and the last quiz score as a percentage from the most recent completed QuizAttempt record.
+2. THE Adaptive_Quiz widget SHALL display a recommended quiz subject and topic determined by the AI_Engine, where the recommendation is based on the subject with the lowest average_accuracy in the student's StudentPerformanceSummary records and a topic selected from that subject's weak_topics list.
+3. WHEN a student clicks the "Start Quiz" button, THE Adaptive_Quiz widget SHALL navigate the student to the adaptive quiz interface with the recommended subject pre-selected.
+4. IF no quiz attempts exist for the student, THEN THE Adaptive_Quiz widget SHALL display "Take your first quiz to see personalized recommendations" with a "Start First Quiz" button that navigates the student to the adaptive quiz interface with no subject pre-selected.
+5. IF the AI_Engine fails to determine a recommended quiz subject and topic, THEN THE Adaptive_Quiz widget SHALL display the student's current difficulty level and accuracy metrics with the recommendation section showing "Unable to load recommendation" and a "Retry" button that re-requests the recommendation from the AI_Engine.
+
+### Requirement 6: Today's Academic Schedule
+
+**User Story:** As a student, I want to see my complete academic schedule for today with class details, so that I can plan my day and access relevant materials quickly.
+
+#### Acceptance Criteria
+
+1. WHEN a student views the Dashboard and classes are scheduled for today, THE Schedule_Service SHALL display today's timetable entries sorted by start time, showing Subject Name, Faculty Name, Time Slot (start and end time), Room Number, and Attendance Status (one of: Present, Absent, Not Marked) for each entry.
+2. WHEN a timetable entry has associated lecture material (notes), THE Dashboard SHALL display a "View Material" link for that entry.
+3. WHEN a timetable entry has an online meeting link, THE Dashboard SHALL display a "Join Meeting" button for that entry.
+4. WHEN a timetable entry has an assignment attached, THE Dashboard SHALL display an "Assignment" indicator with the due date for that entry.
+5. IF no classes are scheduled for today, THEN THE Dashboard SHALL display a maximum of 3 AI-generated revision recommendations from the AI_Engine based on the student's weak topics.
+6. WHILE the current time is within 15 minutes before a scheduled class start time, THE Dashboard SHALL visually highlight that class entry with the purple accent border color to distinguish it from other entries.
+7. IF the Schedule_Service fails to retrieve timetable data, THEN THE Dashboard SHALL display a message indicating the schedule is temporarily unavailable with a retry button.
+8. IF no classes are scheduled for today and the AI_Engine fails to generate revision recommendations, THEN THE Dashboard SHALL display a message indicating that no classes are scheduled and suggesting the student review recent notes.
+9. WHEN a timetable entry's end time has passed, THE Dashboard SHALL display that entry with a muted visual style to distinguish completed classes from upcoming ones.
+
+### Requirement 7: Upcoming Deadlines Widget
+
+**User Story:** As a student, I want to see all upcoming academic deadlines in one place with priority indicators, so that I never miss an assignment, quiz, or exam.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display an Upcoming Deadlines widget listing all pending deadlines within the next 14 days, including Assignments, Quizzes, Lab Submissions, Exam Schedules, and Project Deadlines, where a deadline is considered "pending" if the student has not submitted or completed the associated item and the due date has not passed.
+2. THE Deadline_Service SHALL assign a Priority_Indicator to each deadline: red for due within 24 hours, orange for due within 3 days, and green for due beyond 3 days.
+3. WHEN deadlines are displayed, THE Dashboard SHALL sort them by due date in ascending order (nearest first).
+4. THE Dashboard SHALL display the subject name, deadline type, and due date (including date and time) for each deadline entry.
+5. IF no upcoming deadlines exist within 14 days, THEN THE Dashboard SHALL display "All caught up! No pending deadlines." with a celebratory icon.
+6. IF a deadline's due date has passed and the student has not submitted the associated item, THEN THE Deadline_Service SHALL display that deadline with a red Priority_Indicator and a "Missing" status label, sorted before upcoming deadlines.
+7. IF the Deadline_Service fails to retrieve deadline data, THEN THE Dashboard SHALL display an error message indicating that deadlines could not be loaded, along with a retry button.
+8. THE Upcoming Deadlines widget SHALL display a maximum of 20 deadline entries, with a "View All" link navigating to a full deadlines page if more than 20 pending deadlines exist.
+
+### Requirement 8: Recent Performance Graph Enhancement
+
+**User Story:** As a student, I want interactive performance charts with filtering and AI insights, so that I can understand my academic progress patterns and identify areas needing improvement.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display a Recent Performance graph showing quiz scores and assignment grades as percentages (0 to 100) over time with hover tooltips displaying the exact percentage value, date, and subject name for each data point.
+2. THE Performance graph SHALL provide a subject-wise filter dropdown allowing the student to view performance for a specific subject or all subjects combined, with "All Subjects" selected by default.
+3. THE Performance graph SHALL provide a toggle between "Quiz" and "Assignment" data views, with "Quiz" selected by default; selecting one view hides the other data series from the graph.
+4. THE Performance graph SHALL provide a switch between "Weekly" and "Monthly" time range views, where "Weekly" displays data from the last 4 calendar weeks, "Monthly" displays data from the last 6 calendar months, and "Weekly" is selected by default.
+5. WHEN a student views the Performance graph, THE AI_Engine SHALL generate a one-sentence insight (maximum 150 characters) below the graph within 3 seconds, summarizing the performance trend as improving, declining, or stable.
+6. IF fewer than 3 data points exist for the selected filters, THEN THE Performance graph SHALL display "Not enough data to show trends. Complete more quizzes or assignments." instead of rendering an incomplete graph.
+7. IF the AI_Engine fails to generate a performance insight within 3 seconds, THEN THE Performance graph SHALL display "Unable to generate insight at this time." below the graph and still render the graph data normally.
+
+### Requirement 9: Academic Stats Overview
+
+**User Story:** As a student, I want a comprehensive academic statistics panel showing key metrics, so that I can monitor my overall academic health from a single view.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display an Academic Stats card showing eight metrics: Overall Attendance Percentage, Average Quiz Score, Assignments Pending Count, Subjects at Risk Count, AI Sessions Count, Total Practice Time, Learning_Streak Days, and Doubts Pending Count.
+2. THE Attendance_Service SHALL compute Overall Attendance Percentage as (total classes attended / total classes held) multiplied by 100 from timetable entries and recorded attendance for the current semester, displayed as a whole number followed by a percent sign.
+3. THE Performance_Service SHALL compute Average Quiz Score as the arithmetic mean of the score field from all QuizAttempt records where completed_at is not null for the current semester, displayed as a whole number percentage.
+4. THE Dashboard SHALL compute Subjects at Risk Count as the number of enrolled subjects where the student's average quiz accuracy (correct_count / total_questions across completed QuizAttempt records for that subject) is below 50 percent.
+5. THE Dashboard SHALL compute AI Sessions Count as the total number of distinct ChatLog entries for the student within the current semester.
+6. THE Dashboard SHALL compute Total Practice Time as the sum of durations between started_at and completed_at for all completed QuizAttempt records in the current semester, displayed in hours and minutes.
+7. THE Dashboard SHALL compute Doubts Pending Count as the number of Doubt records for the student where is_resolved is false.
+8. WHEN any metric value falls below its defined caution threshold, THE Dashboard SHALL display that metric with an orange warning color; WHEN any metric value falls below its defined critical threshold, THE Dashboard SHALL display that metric with a red warning color, where thresholds are: Overall Attendance below 85 percent is caution and below 75 percent is critical, Average Quiz Score below 60 percent is caution and below 40 percent is critical, and Subjects at Risk Count of 1 is caution and 2 or more is critical.
+9. IF attendance or quiz data is unavailable for the current semester, THEN THE Dashboard SHALL display "N/A" for the affected metric instead of a numeric value.
+
+### Requirement 10: AI Learning Insights Card
+
+**User Story:** As a student, I want AI-generated learning insights based on my performance patterns, so that I receive actionable recommendations to improve my academic outcomes.
+
+#### Acceptance Criteria
+
+1. WHEN a student views the Dashboard, THE AI_Engine SHALL generate a Learning Insights card containing a maximum of 3 personalized recommendations based on the student's quiz accuracy, study activity from StudentActivityLog entries (quiz attempts, notes views, chatbot queries, practice questions), and attendance data.
+2. THE Learning Insights card SHALL display each recommendation with an explanation of the pattern detected (maximum 150 characters) and the suggested action.
+3. WHEN a student clicks on a recommendation, THE Dashboard SHALL navigate to the relevant section (quiz page, notes, or attendance detail) related to that recommendation.
+4. WHEN a student views the Dashboard for the first time on a given calendar day, THE AI_Engine SHALL regenerate the Learning Insights based on the latest available data.
+5. WHEN a student completes a new quiz or assignment, THE AI_Engine SHALL regenerate the Learning Insights on the next Dashboard view.
+6. IF insufficient data exists to generate insights (fewer than 5 quiz attempts total), THEN THE Dashboard SHALL display "Complete more learning activities to unlock personalized AI insights" with a progress indicator showing the number of quiz attempts completed out of 5 required.
+7. IF the AI_Engine fails to generate Learning Insights, THEN THE Dashboard SHALL display a fallback message indicating insights are temporarily unavailable with a retry button that re-requests generation from the AI_Engine.
+
+### Requirement 11: Weak Topics Widget
+
+**User Story:** As a student, I want to see my weakest topics with accuracy percentages, so that I can focus my study efforts on areas that need the most improvement.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display a Weak Topics widget listing up to 5 topics where the student's accuracy is below 60 percent, sorted by accuracy ascending (weakest first).
+2. THE Weak_Topics_Engine SHALL compute per-topic accuracy from QuizAnswer records for the current semester, grouped by the Question topic field, considering only topics where the student has answered a minimum of 3 questions.
+3. THE Weak Topics widget SHALL display the topic name, associated subject name, and accuracy percentage rounded to the nearest whole number for each entry.
+4. THE Weak Topics widget SHALL provide a "Practice Weak Topics" button that navigates to the Practice_Generator with the weakest topic's subject and topic pre-selected as filters.
+5. IF no topics have accuracy below 60 percent, THEN THE Dashboard SHALL display "Great work! No weak topics detected." with a positive reinforcement icon.
+6. IF the Weak_Topics_Engine fails to retrieve or compute topic accuracy data, THEN THE Dashboard SHALL display an error message indicating that weak topics cannot be loaded, with a retry button.
+
+### Requirement 12: Attendance Monitor Widget
+
+**User Story:** As a student, I want a dedicated attendance monitor showing per-subject attendance and warnings, so that I can maintain the required attendance threshold.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display an Attendance Monitor widget showing overall attendance percentage and a per-subject attendance breakdown for the current semester, sorted by attendance percentage ascending (lowest attendance first).
+2. WHILE a subject's attendance is below 75 percent, THE Attendance Monitor SHALL display that subject with a red warning indicator and the text "Below minimum requirement".
+3. WHEN overall attendance drops below 80 percent, THE AI_Engine SHALL generate an attendance warning message stating how many classes the student must attend to reach 75 percent in each deficient subject, computed based on remaining scheduled classes for the semester.
+4. THE Attendance Monitor SHALL display the total classes held and total classes attended for each subject, with the attendance percentage displayed as a whole number.
+5. IF attendance data is unavailable for the current semester, THEN THE Attendance Monitor SHALL display "Attendance data not yet available for this semester."
+
+### Requirement 13: Assignment Tracker Widget
+
+**User Story:** As a student, I want a comprehensive assignment tracker showing all assignments with their status, so that I can manage submissions and never miss a deadline.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display an Assignment Tracker widget with tabs for Pending, Submitted, Late, and Upcoming assignments, where "Pending" contains assignments whose due date is within the next 3 days and not yet submitted, "Upcoming" contains assignments due beyond 3 days but within 14 days, "Submitted" contains assignments the student has submitted, and "Late" contains assignments past due date without submission.
+2. THE Assignment Tracker SHALL display for each assignment: Subject Name, Faculty Name, Due Date, and Submission Status (one of: Not Submitted, Submitted, Late, or Graded).
+3. THE Assignment Tracker SHALL provide a "Quick Submit" button for pending assignments that navigates to the assignment submission page.
+4. WHEN an assignment due date has passed without submission, THE Assignment Tracker SHALL move that assignment to the "Late" tab and display it with a red status indicator.
+5. THE Assignment Tracker SHALL display a count badge on each tab indicating the number of assignments in that category.
+6. THE Assignment Tracker SHALL sort assignments within each tab by due date in ascending order (nearest due date first).
+7. IF no assignments exist in any category for the student, THEN THE Assignment Tracker SHALL display a contextual empty state message "No assignments found" with an icon and a suggested action to check back later.
+
+### Requirement 14: Doubt Summary Widget
+
+**User Story:** As a student, I want a summary of my academic doubts showing response status, so that I can follow up on unanswered questions and review resolved ones.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display a Doubt Summary widget showing four metrics computed from the logged-in student's doubts: Pending Doubts Count (doubts where is_resolved is false and no answers exist), Faculty Replies Count (doubts that have at least one answer from a user with role "faculty"), AI Answers Available Count (doubts that have at least one answer from a user with role "ai_assistant"), and Resolved Doubts Count (doubts where is_resolved is true).
+2. IF a displayed doubt has at least one answer from a faculty-role user, THEN THE Doubt Summary SHALL display a "Faculty Replied" badge next to that doubt entry.
+3. IF a displayed doubt has at least one answer from an AI-role user, THEN THE Doubt Summary SHALL display an "AI Answer Available" indicator next to that doubt entry.
+4. THE Doubt Summary widget SHALL provide a "Continue Discussion" button for each displayed unresolved doubt that navigates to the doubt detail page for that doubt.
+5. THE Doubt Summary SHALL display the 3 most recent unresolved doubts (is_resolved is false) belonging to the logged-in student, sorted by creation date descending, showing the subject name and creation date for each entry.
+6. IF the student has no doubts recorded in the system, THEN THE Doubt Summary widget SHALL display "No doubts raised yet" with a "Raise a Doubt" button that navigates to the doubt submission form.
+
+### Requirement 15: Placement Readiness Widget
+
+**User Story:** As a student, I want a placement readiness overview showing my preparation progress, so that I can identify gaps in my placement preparation and take corrective action.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display a Placement Readiness widget showing: Resume Score (0 to 100 percent), Projects Completed Count (0 or more), Certificates Count (0 or more), Coding Test Average Score (0 to 100 percent), Communication Assessment Score (0 to 100 percent), and Overall Placement Readiness Percentage (0 to 100 percent).
+2. THE Placement_Readiness_Service SHALL compute Coding Test Average Score as the mean of (score divided by total_marks multiplied by 100) across all TestAttempt records with status "submitted" for that student.
+3. THE Placement Readiness widget SHALL display an AI-generated recommendation from the AI_Engine suggesting the single most impactful action the student can take to improve placement readiness, limited to a maximum of 200 characters.
+4. IF no placement test attempts exist for the student, THEN THE Placement Readiness widget SHALL display "Start your placement preparation journey" with a link to available placement tests.
+5. THE Placement Readiness widget SHALL display a progress bar representing Overall Placement Readiness Percentage with color coding: red for 0 to 39 percent, orange for 40 to 70 percent, and green for 71 to 100 percent.
+6. THE Placement_Readiness_Service SHALL compute Overall Placement Readiness Percentage as the weighted average of: Resume Score (20 percent weight), Projects Completed Count mapped to percentage based on a target of 3 projects (20 percent weight), Certificates Count mapped to percentage based on a target of 3 certificates (10 percent weight), Coding Test Average Score (30 percent weight), and Communication Assessment Score (20 percent weight), where any unavailable metric contributes 0 to its weighted portion.
+7. IF the AI_Engine fails to generate a placement recommendation, THEN THE Placement Readiness widget SHALL display "Recommendation unavailable. Please try again later." with a retry button.
+8. IF a metric has no data available (except Coding Test Average which is covered by criterion 4), THEN THE Placement Readiness widget SHALL display that metric as "Not assessed" with a value of 0 percent used in the Overall Placement Readiness calculation.
+
+### Requirement 16: Learning Consistency Heatmap
+
+**User Story:** As a student, I want a weekly study heatmap showing my learning activity patterns, so that I can build consistent study habits and identify days where I tend to skip studying.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display a Learning Consistency widget containing a 7-day Heatmap showing study activity intensity for each day of the current week (Monday through Sunday).
+2. THE Heatmap SHALL compute activity intensity from StudentActivityLog entries, where intensity levels are: no activity (0 actions), low activity (1 to 3 actions), moderate activity (4 to 7 actions), high activity (8 or more actions), counting quiz attempts, notes views, chatbot queries, and practice questions.
+3. THE Heatmap SHALL use a graduated color scale: no activity (grey), low activity (light purple), moderate activity (medium purple), high activity (dark purple).
+4. THE Learning Consistency widget SHALL display the current Learning_Streak count and the longest streak achieved this semester.
+5. WHEN a student has maintained a streak of 7 or more consecutive days, THE Dashboard SHALL display a streak achievement badge.
+6. THE Learning_Streak SHALL be computed as the count of consecutive calendar days (ending today) where the student has at least one StudentActivityLog entry with action type "quiz_attempt", "view_notes", "chatbot_query", or "practice_questions".
+
+### Requirement 17: Academic Notifications Panel
+
+**User Story:** As a student, I want academic-only notifications on my dashboard, so that I receive relevant alerts without noise from non-academic content.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display a Notifications panel showing only notifications whose module field matches one of the following academic categories: "quiz", "assignment", "attendance", "notes", "timetable", "ai_recommendation", and "exam".
+2. THE Notification_Service SHALL filter notifications by the module field, excluding notifications with non-academic module values (such as "system", "general", "event", or "urgent") from the panel results.
+3. WHEN a new unread notification with an academic module category is received via WebSocket, THE Dashboard SHALL increment the unread count badge displayed on the Notifications panel header, where the badge shows the total number of unread academic notifications.
+4. THE Notifications panel SHALL display a maximum of 10 notifications sorted by creation date descending, showing for each notification: the title, a truncated message of up to 100 characters, the priority level indicator, and the relative time since creation.
+5. WHEN a student clicks a notification that has a non-null reference_id, THE Dashboard SHALL mark that notification as read and navigate to the resource page associated with the reference_id.
+6. IF the Notification_Service fails to retrieve notifications, THEN THE Dashboard SHALL display "Unable to load notifications" with a retry button, preserving any previously displayed notification data.
+7. IF a student clicks a notification that has a null reference_id, THEN THE Dashboard SHALL mark that notification as read without performing navigation.
+
+### Requirement 18: Quick Actions Section
+
+**User Story:** As a student, I want a quick actions section with one-tap access to common academic activities, so that I can navigate to frequent tasks without searching through menus.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display a Quick Actions section below all other widget sections containing 8 action buttons: "Continue Learning", "Take Quiz", "Ask AI", "View Notes", "Download Notes", "Raise Doubt", "View Attendance", and "Submit Assignment".
+2. WHEN a student clicks "Continue Learning", THE Dashboard SHALL navigate to the last accessed study resource determined by the most recent StudentActivityLog entry with action "view_notes" or "attempt_quiz".
+3. IF no StudentActivityLog entry with action "view_notes" or "attempt_quiz" exists for the student, THEN THE Dashboard SHALL navigate to the student's enrolled subjects list page.
+4. WHEN a student clicks "Take Quiz", THE Dashboard SHALL navigate to the adaptive quiz page with the AI-recommended subject pre-selected based on the student's weakest performance area.
+5. IF no AI recommendation is available when the student clicks "Take Quiz", THEN THE Dashboard SHALL navigate to the adaptive quiz page with no subject pre-selected, allowing manual selection.
+6. WHEN a student clicks "Ask AI", THE Dashboard SHALL open the AI Tutor chatbot interface in a new chat session.
+7. WHEN a student clicks "View Notes", THE Dashboard SHALL navigate to the notes listing page filtered by the student's enrolled subjects for the current semester.
+8. WHEN a student clicks "Download Notes", THE Dashboard SHALL navigate to the notes listing page with download options displayed for the student's enrolled subjects.
+9. WHEN a student clicks "Raise Doubt", THE Dashboard SHALL navigate to the doubt submission form with the subject from the student's most recent StudentActivityLog entry pre-filled.
+10. IF no StudentActivityLog entry exists for the student when clicking "Raise Doubt", THEN THE Dashboard SHALL navigate to the doubt submission form with no subject pre-filled.
+11. WHEN a student clicks "View Attendance", THE Dashboard SHALL navigate to the attendance detail page showing per-subject attendance for the current semester.
+12. WHEN a student clicks "Submit Assignment", THE Dashboard SHALL navigate to the assignment submission page filtered to show pending assignments sorted by due date ascending.
+
+### Requirement 19: AI Assistant Floating Button
+
+**User Story:** As a student, I want a floating AI assistant button with expanded action options, so that I can access AI-powered study tools from anywhere on the dashboard without scrolling.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL display a floating AI Assistant button fixed to the bottom-right corner of the viewport, visible at all scroll positions.
+2. WHEN a student clicks the floating AI Assistant button, THE Dashboard SHALL expand a menu showing 6 options: "Ask Question", "Generate Notes", "Practice Questions", "Summarize Lecture", "Explain Code", and "Generate Revision Plan".
+3. WHEN a student clicks "Ask Question" from the floating menu, THE Dashboard SHALL open the AI Tutor chatbot interface in a new chat session.
+4. WHEN a student clicks "Generate Notes" from the floating menu, THE AI_Engine SHALL display a loading indicator, prompt for subject and topic selection, then generate summarized notes within 10 seconds.
+5. WHEN a student clicks "Practice Questions" from the floating menu, THE Dashboard SHALL navigate to the AI Practice Generator card with the filter panel displayed.
+6. WHEN a student clicks "Summarize Lecture" from the floating menu, THE AI_Engine SHALL prompt for subject and note selection, then generate a summary within 10 seconds.
+7. WHEN a student clicks "Explain Code" from the floating menu, THE AI_Engine SHALL open a chat session pre-configured for code explanation with a text input area for pasting code.
+8. WHEN a student clicks "Generate Revision Plan" from the floating menu, THE AI_Engine SHALL generate a revision plan based on upcoming exams within 14 days and the student's weak topics.
+9. WHEN a student clicks outside the expanded floating menu or presses the Escape key, THE Dashboard SHALL collapse the menu back to the single floating button.
+10. IF the AI_Engine fails to respond for any floating menu AI action, THEN THE Dashboard SHALL display an error message with a retry option without closing the floating menu.
+
+### Requirement 20: Dashboard Cleanup and Low-Value Widget Removal
+
+**User Story:** As a student, I want a clutter-free dashboard where every element serves an academic purpose, so that I can focus on actionable information without distractions.
+
+#### Acceptance Criteria
+
+1. THE Dashboard SHALL NOT display a Random Daily Challenge widget as a standalone card (daily challenge functionality is absorbed into the AI Practice Generator).
+2. THE Dashboard SHALL NOT display empty placeholder cards when data is unavailable; each widget SHALL instead render an empty state composed of an icon representing the widget's purpose, a text description (maximum 100 characters) explaining why no data is present, and a call-to-action button that navigates the student to the feature where they can generate the missing data.
+3. THE Dashboard SHALL NOT display a text-only greeting that shows only the student's name without academic metrics; the Hero Banner with personalized academic data (as defined in Requirement 1) SHALL be displayed instead.
+4. THE Dashboard SHALL NOT render any widget section that lacks at least one navigable link, interactive button, or data value derived from the student's academic activity; if a widget cannot satisfy this condition it SHALL be replaced by its empty state as defined in criterion 2.
+5. WHEN a widget's backing service returns zero records for the current student, THE Dashboard SHALL render the empty state defined in criterion 2, where the icon, description text, and call-to-action button are specific to that widget's academic function.
+6. IF a widget's backing service fails to respond within 5 seconds, THEN THE Dashboard SHALL display an error state containing an error icon, the text "Unable to load data", and a "Retry" button that re-requests data from the service.

@@ -8,7 +8,7 @@ import api from "./api"
  * Send a message to the AI tutor.
  * @param {string} message
  * @param {string} subject  - DSA | DBMS | OS | CN | JAVA | PYTHON
- * @param {string} language - english | hindi
+ * @param {string} language - english | hindi | auto
  * @param {Array}  conversationHistory - [{role, content}, ...]
  * @param {string|null} pdfContext - extracted text from uploaded PDF
  */
@@ -23,7 +23,31 @@ export async function sendMessage(message, subject, language, conversationHistor
     payload.pdf_context = pdfContext
   }
   const { data } = await api.post("/chatbot/chat", payload)
-  return data // { response, suggested_topic, subject, language, provider_used }
+  return data // { id, response, suggested_topic, subject, language, confidence_level, provider_used }
+}
+
+/**
+ * Flag an AI answer as incorrect.
+ * @param {string} chatLogId 
+ * @param {string} flagReason 
+ */
+export async function flagAnswer(chatLogId, flagReason) {
+  const { data } = await api.post("/chatbot/flag", {
+    chat_log_id: chatLogId,
+    flag_reason: flagReason,
+  })
+  return data
+}
+
+/**
+ * Fetch the last 30 days of chat logs for the student.
+ * @param {string|null} subject Filter by subject code
+ */
+export async function getChatHistory(subject = null) {
+  const params = new URLSearchParams()
+  if (subject) params.append("subject", subject)
+  const { data } = await api.get(`/chatbot/history?${params.toString()}`)
+  return data
 }
 
 /**
@@ -40,20 +64,35 @@ export async function uploadPdf(file) {
   return data
 }
 
+let cachedSubjects = null;
 /** Fetch the list of supported MCA subjects with colours & topics. */
 export async function getSubjects() {
+  if (cachedSubjects) return cachedSubjects;
   const { data } = await api.get("/chatbot/subjects")
+  cachedSubjects = data;
   return data
 }
 
-/** Fetch the last 20 chat logs for the authenticated student. */
-export async function getChatHistory() {
-  const { data } = await api.get("/chatbot/history")
-  return data
-}
-
+let cachedProviderStatus = null;
 /** Fetch AI provider status (which keys are configured). */
 export async function getProviderStatus() {
+  if (cachedProviderStatus) return cachedProviderStatus;
   const { data } = await api.get("/chatbot/provider-status")
+  cachedProviderStatus = data;
+  return data
+}
+
+/** Admin: Fetch flagged answers */
+export async function getFlaggedAnswers(status = "pending") {
+  const { data } = await api.get(`/chatbot/admin/flagged-answers?status=${status}`)
+  return data
+}
+
+/** Admin: Review flagged answer */
+export async function reviewFlaggedAnswer(flagId, status, adminNote = "") {
+  const { data } = await api.patch(`/chatbot/admin/flagged-answers/${flagId}`, {
+    status,
+    admin_note: adminNote,
+  })
   return data
 }

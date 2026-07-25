@@ -39,28 +39,26 @@ def get_student_overview(db: Session = Depends(get_db), current_user = Depends(r
     total_challenges = db.query(func.count(ChallengeSubmission.id)).filter(ChallengeSubmission.student_id == current_user.id).scalar() or 0
     challenge_score = db.query(func.sum(ChallengeSubmission.score_earned)).filter(ChallengeSubmission.student_id == current_user.id).scalar() or 0
     
-    # 4. Subjects studied breakdown (complex query simplified for demonstration)
-    # Get unique subject IDs attempted by user (active only)
-    attempted_subject_ids = db.query(QuizAttempt.subject_id)\
-                              .join(Subject, QuizAttempt.subject_id == Subject.id)\
-                              .filter(QuizAttempt.student_id == current_user.id, Subject.is_archived == False)\
-                              .distinct().all()
-    attempted_subject_ids = [sid[0] for sid in attempted_subject_ids]
+    # 4. Subjects studied breakdown (Consolidated query to eliminate N+1 queries bottleneck)
+    subjects_studied_data = db.query(
+        Subject.name.label("subject_name"),
+        func.count(QuizAttempt.id).label("quiz_count"),
+        func.avg(QuizAttempt.score).label("avg_score"),
+        func.max(QuizAttempt.completed_at).label("last_attempted")
+    ).join(Subject, QuizAttempt.subject_id == Subject.id)\
+     .filter(QuizAttempt.student_id == current_user.id, Subject.is_archived == False)\
+     .group_by(Subject.id, Subject.name)\
+     .all()
     
-    subjects_studied = []
-    for sid in attempted_subject_ids:
-        subject = db.query(Subject).filter(Subject.id == sid).first()
-        if subject:
-            sub_quiz_count = db.query(func.count(QuizAttempt.id)).filter(QuizAttempt.student_id == current_user.id, QuizAttempt.subject_id == sid).scalar() or 0
-            sub_avg_score = db.query(func.avg(QuizAttempt.score)).filter(QuizAttempt.student_id == current_user.id, QuizAttempt.subject_id == sid).scalar() or 0
-            sub_last_attempt = db.query(func.max(QuizAttempt.completed_at)).filter(QuizAttempt.student_id == current_user.id, QuizAttempt.subject_id == sid).scalar()
-            
-            subjects_studied.append({
-                "subject_name": subject.name,
-                "quiz_count": sub_quiz_count,
-                "avg_score": round(sub_avg_score, 1),
-                "last_attempted": sub_last_attempt
-            })
+    subjects_studied = [
+        {
+            "subject_name": row.subject_name,
+            "quiz_count": row.quiz_count,
+            "avg_score": round(row.avg_score or 0, 1),
+            "last_attempted": row.last_attempted
+        }
+        for row in subjects_studied_data
+    ]
             
     return {
         "total_quizzes": total_quizzes,
@@ -98,30 +96,29 @@ def get_student_score_history(db: Session = Depends(get_db), current_user = Depe
 
 @router.get("/leaderboard")
 def get_leaderboard(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    # Group by student_id, calculate avg score and count quizzes
+    # Group by User, calculate avg score and count quizzes
     leaderboard_data = db.query(
-        QuizAttempt.student_id,
+        User,
         func.avg(QuizAttempt.score).label("avg_score"),
         func.count(QuizAttempt.id).label("total_quizzes")
-    ).filter(QuizAttempt.completed_at.isnot(None))\
-     .group_by(QuizAttempt.student_id)\
+    ).join(User, QuizAttempt.student_id == User.id)\
+     .filter(QuizAttempt.completed_at.isnot(None))\
+     .group_by(User.id)\
      .order_by(desc("avg_score"))\
      .limit(10)\
      .all()
      
     result = []
     rank = 1
-    for item in leaderboard_data:
-        user = db.query(User).filter(User.id == item.student_id).first()
-        if user:
-            result.append({
-                "rank": rank,
-                "name": user.name,
-                "avg_score": round(item.avg_score, 1),
-                "streak_count": user.streak_count,
-                "total_quizzes": item.total_quizzes
-            })
-            rank += 1
+    for user, avg_score, total_quizzes in leaderboard_data:
+        result.append({
+            "rank": rank,
+            "name": user.name,
+            "avg_score": round(avg_score, 1),
+            "streak_count": user.streak_count,
+            "total_quizzes": total_quizzes
+        })
+        rank += 1
             
     return result
 
@@ -137,17 +134,19 @@ def get_admin_stats(db: Session = Depends(get_db), current_user = Depends(requir
     total_chat_messages = db.query(func.count(ChatLog.id)).scalar() or 0
     total_challenges = db.query(func.count(ChallengeSubmission.id)).scalar() or 0
     
+    # Consolidated queries to avoid N+1 loop overhead
+    notes_counts = dict(db.query(Note.subject_id, func.count(Note.id)).group_by(Note.subject_id).all())
+    questions_counts = dict(db.query(Question.subject_id, func.count(Question.id)).group_by(Question.subject_id).all())
+    quiz_attempts_counts = dict(db.query(QuizAttempt.subject_id, func.count(QuizAttempt.id)).group_by(QuizAttempt.subject_id).all())
+
     subjects_data = []
     subjects = db.query(Subject).filter(Subject.is_archived == False).all()
     for sub in subjects:
-        nc = db.query(func.count(Note.id)).filter(Note.subject_id == sub.id).scalar() or 0
-        qc = db.query(func.count(Question.id)).filter(Question.subject_id == sub.id).scalar() or 0
-        q_att = db.query(func.count(QuizAttempt.id)).filter(QuizAttempt.subject_id == sub.id).scalar() or 0
         subjects_data.append({
             "name": sub.name,
-            "notes_count": nc,
-            "questions_count": qc,
-            "quiz_attempts_count": q_att
+            "notes_count": notes_counts.get(sub.id, 0),
+            "questions_count": questions_counts.get(sub.id, 0),
+            "quiz_attempts_count": quiz_attempts_counts.get(sub.id, 0)
         })
         
     return {

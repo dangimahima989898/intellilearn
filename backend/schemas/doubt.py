@@ -11,7 +11,10 @@ class DoubtCreate(BaseModel):
     @field_validator('question_text')
     @classmethod
     def sanitize_field(cls, v: str) -> str:
-        return sanitize_text(v)
+        sanitized = sanitize_text(v).strip()
+        if not sanitized:
+            raise ValueError("Question text cannot be blank")
+        return sanitized
 
 class DoubtOut(BaseModel):
     id: UUID
@@ -37,7 +40,10 @@ class DoubtAnswerCreate(BaseModel):
     @field_validator('answer_text')
     @classmethod
     def sanitize_field(cls, v: str) -> str:
-        return sanitize_text(v)
+        sanitized = sanitize_text(v).strip()
+        if not sanitized:
+            raise ValueError("Answer text cannot be blank")
+        return sanitized
 
 class DoubtAnswerOut(BaseModel):
     id: UUID
