@@ -121,57 +121,10 @@ const handleResponseError = (error) => {
 
   if (isTimeout || isNetworkError) {
     const friendlyMessage = "We're having trouble connecting right now. Please check your internet connection and try again.";
-    
-    // Dismiss previous toasts before showing the error toast
-    toast.dismiss();
-
-    toast.error(
-      (t) => React.createElement(
-        "div",
-        { style: { display: "flex", flexDirection: "column", gap: "8px" } },
-        React.createElement(
-          "span",
-          { style: { fontSize: "13px", fontWeight: 500 } },
-          friendlyMessage
-        ),
-        React.createElement(
-          "button",
-          {
-            onClick: (e) => {
-              // Disable button to prevent double-clicks
-              e.currentTarget.disabled = true;
-              e.currentTarget.innerText = "Retrying...";
-              toast.dismiss(t.id);
-              if (error.config) {
-                error.config.__retryCount = 0;
-                api(error.config).catch(() => {});
-              }
-            },
-            style: {
-              alignSelf: "flex-end",
-              backgroundColor: "#2563EB",
-              color: "#FFFFFF",
-              border: "none",
-              borderRadius: "6px",
-              padding: "6px 12px",
-              fontSize: "11px",
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "background-color 0.2s",
-            },
-            onMouseOver: (e) => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = "#1D4ED8"; },
-            onMouseOut: (e) => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = "#2563EB"; }
-          },
-          "Retry"
-        )
-      ),
-      {
-        id: `error_${error.config?.url || "global"}`,
-        duration: Infinity,
-      }
-    );
+    // Propagate the network error silently to components so they stay in loading state without popups
     return Promise.reject(new Error(friendlyMessage));
   }
+
 
   // Handle other types of errors (e.g. 400, 500)
   const fallbackMsg = error.response?.data?.detail || error.message || "An unexpected error occurred.";
