@@ -170,25 +170,7 @@ export default function LoginPage() {
         }} />
       ))}
 
-      {/* ── Theme toggle ────────────────────────────────────────────────── */}
-      <button
-        onClick={toggleTheme}
-        title={theme === "dark" ? "Switch to Light" : "Switch to Dark"}
-        style={{
-          position:"fixed", top:22, right:22, zIndex:50,
-          width:40, height:40, borderRadius:10,
-          border:"1px solid rgba(255,255,255,0.1)",
-          background:"rgba(255,255,255,0.05)",
-          display:"flex", alignItems:"center", justifyContent:"center",
-          cursor:"pointer", color:"rgba(255,255,255,0.6)",
-          backdropFilter:"blur(10px)",
-          transition:"all 0.2s ease",
-        }}
-        onMouseOver={e => { e.currentTarget.style.background="rgba(255,255,255,0.12)"; e.currentTarget.style.color="#fff" }}
-        onMouseOut={e => { e.currentTarget.style.background="rgba(255,255,255,0.05)"; e.currentTarget.style.color="rgba(255,255,255,0.6)" }}
-      >
-        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-      </button>
+
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header className="header-animate" style={{

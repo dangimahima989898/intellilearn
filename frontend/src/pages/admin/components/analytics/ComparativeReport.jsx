@@ -61,8 +61,8 @@ export default function ComparativeReport({ deptFilter }) {
       if (subjectsInDept.length === 0) {
         return { dept: d, 'This Semester': 0, 'Last Semester': 0 }
       }
-      const thisSemSum = subjectsInDept.reduce((sum, r) => sum + r.this_sem, 0)
-      const lastSemSum = subjectsInDept.reduce((sum, r) => sum + r.last_sem, 0)
+      const thisSemSum = subjectsInDept.reduce((sum, r) => sum + (r.this_sem || 0), 0)
+      const lastSemSum = subjectsInDept.reduce((sum, r) => sum + (r.last_sem || 0), 0)
       return {
         dept: d,
         'This Semester': Math.round(thisSemSum / subjectsInDept.length),
@@ -76,7 +76,7 @@ export default function ComparativeReport({ deptFilter }) {
     if (filtered.length === 0) {
       return { improved: 'N/A', declined: 'N/A', bestDept: 'N/A', improvedDiff: '0%', declinedDiff: '0%', bestDeptScore: '0%' }
     }
-    const withDiffs = filtered.map(r => ({ ...r, diff: r.this_sem - r.last_sem }))
+    const withDiffs = filtered.map(r => ({ ...r, diff: (r.this_sem || 0) - (r.last_sem || 0) }))
     
     // Sort by diff descending
     const sortedDiffs = [...withDiffs].sort((a, b) => b.diff - a.diff)

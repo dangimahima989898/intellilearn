@@ -4,14 +4,21 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/*.pyc
 backend/.env
+backend/.env.*
 backend/serviceAccountKey.json
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Secrets — never commit these
+.env
+.env.*
+*.env
 
 # Node
 frontend/node_modules/
 frontend/dist/
 frontend/.env
+frontend/.env.*
 frontend/.env.local
 
 # IDE
@@ -22,8 +29,15 @@ frontend/.env.local
 # Alembic
 backend/alembic/versions/*.pyc
 
-# Databases
+# Databases (local test DBs — Neon is used in prod)
 *.db
 backend/*.db
 **/*.db
 database.db
+
+# Logs
+backend/server_start.log
+*.log
+
+# Large files / generated reports
+synopsis_dict.txt

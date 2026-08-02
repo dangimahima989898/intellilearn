@@ -1,3 +1,13 @@
+---
+title: IntelliLearn
+emoji: 🎓
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # IntelliLearn 🎓
 
 AI-Powered Smart Learning Management & Adaptive Assessment System

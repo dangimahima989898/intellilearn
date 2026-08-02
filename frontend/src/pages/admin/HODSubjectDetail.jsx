@@ -56,7 +56,7 @@ export default function HODSubjectDetail() {
       const mappedSubj = {
         ...subj,
         faculty_assignments: subj.faculty ? [{ role: 'primary', faculty_id: subj.faculty.id, faculty_name: subj.faculty.name }] : [],
-        topics_list: subj.units ? subj.units.map(u => u.topic) : []
+        topics_list: subj.topics_list || (subj.units ? subj.units.map(u => u.topic) : [])
       }
       
       setSubject(mappedSubj)

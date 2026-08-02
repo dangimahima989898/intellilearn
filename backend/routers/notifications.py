@@ -299,11 +299,15 @@ def get_notifications(
                 })
 
     elif role == "student":
-        # Unresolved student doubts that have received answers
-        student_doubts = db.query(Doubt).filter(
+        # Unresolved student doubts that have received answers — filtered to current semester subjects only
+        student_doubts_query = db.query(Doubt).join(Subject, Doubt.subject_id == Subject.id).filter(
             Doubt.student_id == current_user.id,
-            Doubt.is_resolved == False
-        ).all()
+            Doubt.is_resolved == False,
+            Subject.semester_number == current_user.current_semester
+        )
+        if current_user.course_id:
+            student_doubts_query = student_doubts_query.filter(Subject.course_id == current_user.course_id)
+        student_doubts = student_doubts_query.all()
         for r in student_doubts:
             has_answers = db.query(DoubtAnswer).filter(DoubtAnswer.doubt_id == r.id).first() is not None
             if has_answers:

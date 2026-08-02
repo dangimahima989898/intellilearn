@@ -287,7 +287,7 @@ export default function StudentSummaryView() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h1 className={`text-3xl font-outfit font-extrabold ${
-            isLight ? "text-[#5B21B6]" : "bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
+            isLight ? "text-[#8B5CF6]" : "bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
           }`}>
             Verified Revision Summaries
           </h1>
@@ -306,8 +306,8 @@ export default function StudentSummaryView() {
             className={`px-4.5 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
               selectedSubject === sub.id
                 ? isLight
-                  ? "bg-[#5B21B6] border-[#5B21B6] text-white shadow-md shadow-purple-600/10"
-                  : "bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/10"
+                  ? "bg-[#8B5CF6] border-[#8B5CF6] text-white shadow-md shadow-violet-600/10"
+                  : "bg-[#8B5CF6] border-[#7C3AED] text-white shadow-md shadow-violet-600/10"
                 : isLight
                   ? "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                   : "bg-white/3 border-white/5 text-white/60 hover:text-white hover:bg-white/5"

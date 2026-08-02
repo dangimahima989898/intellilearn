@@ -134,11 +134,15 @@ export default function NotesPage() {
     formData.append('title', uploadData.title)
     formData.append('subject_id', uploadData.subject_id)
     formData.append('file', selectedFile)
-    if (modalCourseId) {
-      formData.append('course_id', modalCourseId)
-    }
-    if (modalSemester) {
-      formData.append('semester_number', modalSemester)
+    // Ensure we send matching course/semester from the subject's metadata to prevent validation errors
+    const selectedSub = modalSubjects.find(s => s.id === uploadData.subject_id)
+    if (selectedSub) {
+      if (selectedSub.course_id) {
+        formData.append('course_id', selectedSub.course_id)
+      }
+      if (selectedSub.semester_number) {
+        formData.append('semester_number', selectedSub.semester_number)
+      }
     }
 
     try {

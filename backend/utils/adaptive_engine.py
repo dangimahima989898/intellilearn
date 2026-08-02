@@ -192,6 +192,16 @@ class AdaptiveEngine:
         if not attempt or not question:
             return {"error": "Session or Question not found"}
 
+        if attempt.completed_at is not None:
+            return {"error": "Cannot change or submit answers after quiz is completed"}
+
+        existing = db.query(QuizAnswer).filter(
+            QuizAnswer.attempt_id == session_id,
+            QuizAnswer.question_id == question_id
+        ).first()
+        if existing:
+            return {"error": "Question already answered in this session"}
+
         is_correct = (selected_option.lower().strip() == question.correct_answer.lower().strip())
 
         response = QuizAnswer(
@@ -352,6 +362,21 @@ class AdaptiveEngine:
             summary.predicted_readiness = readiness
         db.commit()
 
+        questions_review = []
+        for ans, q in answers:
+            questions_review.append({
+                "id": q.id,
+                "question_text": q.question_text,
+                "option_a": q.option_a,
+                "option_b": q.option_b,
+                "option_c": q.option_c,
+                "option_d": q.option_d,
+                "selected_answer": ans.selected_answer,
+                "correct_answer": q.correct_answer,
+                "is_correct": ans.is_correct,
+                "explanation": q.explanation
+            })
+
         return {
             "session_id": str(session_id),
             "score": accuracy,
@@ -367,5 +392,6 @@ class AdaptiveEngine:
             "time_analysis": time_analysis,
             "predicted_readiness": readiness,
             "readiness_label": readiness_label,
-            "subject_name": attempt.subject.name if attempt.subject else "Subject"
+            "subject_name": attempt.subject.name if attempt.subject else "Subject",
+            "questions_review": questions_review
         }

@@ -1,225 +1,337 @@
 import { useState, useEffect } from 'react'
-import { FileText, Download, Eye, SearchX, Sparkles, X, Presentation } from 'lucide-react'
+import {
+  FileText, Download, Sparkles, X, Presentation,
+  BookOpen, ArrowLeft, BookMarked, Clock, ChevronRight, File
+} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { useTheme } from '../../context/ThemeContext'
 import studentService from '../../services/studentService'
 import toast from 'react-hot-toast'
 import PageWrapper from '../../components/PageWrapper'
 import SubjectBadge from '../../components/SubjectBadge'
 
+const SUBJECT_COLORS = [
+  { bg: '#EEF2FF', accent: '#6366F1', text: '#4338CA', ring: '#C7D2FE' },
+  { bg: '#F0FDF4', accent: '#22C55E', text: '#15803D', ring: '#BBF7D0' },
+  { bg: '#FFF7ED', accent: '#F97316', text: '#C2410C', ring: '#FED7AA' },
+  { bg: '#FDF4FF', accent: '#A855F7', text: '#7E22CE', ring: '#E9D5FF' },
+  { bg: '#ECFDF5', accent: '#14B8A6', text: '#0F766E', ring: '#99F6E4' },
+  { bg: '#FFF1F2', accent: '#F43F5E', text: '#BE123C', ring: '#FECDD3' },
+  { bg: '#EFF6FF', accent: '#3B82F6', text: '#1D4ED8', ring: '#BFDBFE' },
+  { bg: '#FEFCE8', accent: '#EAB308', text: '#A16207', ring: '#FEF08A' },
+]
+
+function getColor(index) {
+  return SUBJECT_COLORS[index % SUBJECT_COLORS.length]
+}
+
+// Pretty initials from subject name
+function getInitials(name) {
+  if (!name) return '?'
+  const words = name.trim().split(/\s+/)
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase()
+}
+
 export default function StudentNotesPage() {
   const { user } = useAuth()
-  const { theme } = useTheme()
-  const isLight = theme === 'light'
-  const [notes, setNotes] = useState([])
   const [subjects, setSubjects] = useState([])
+  const [notes, setNotes] = useState([])
+  const [selectedSubject, setSelectedSubject] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [notesLoading, setNotesLoading] = useState(false)
   const [summarizingId, setSummarizingId] = useState(null)
   const [activeSummaryNote, setActiveSummaryNote] = useState(null)
 
-  const fetchData = async () => {
-    try {
-      const [notesData, subjectsData] = await Promise.all([
-        studentService.getNotes(),
-        studentService.getSubjects()
-      ])
-      setNotes(notesData || [])
-      setSubjects(subjectsData || [])
-    } catch (error) {
-      toast.error('Failed to load notes')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
-    fetchData()
+    studentService.getSubjects()
+      .then(d => setSubjects(d || []))
+      .catch(() => toast.error('Failed to load subjects'))
+      .finally(() => setLoading(false))
   }, [])
 
-  const filteredNotes = notes
+  const handleSelectSubject = async (subject) => {
+    setSelectedSubject(subject)
+    setNotes([])
+    setNotesLoading(true)
+    try {
+      const data = await studentService.getNotes(subject.id)
+      setNotes(data || [])
+    } catch { toast.error('Failed to load notes') }
+    finally { setNotesLoading(false) }
+  }
+
+  const handleBack = () => { setSelectedSubject(null); setNotes([]) }
 
   const handleDownload = async (id, filename) => {
     try {
       const blob = await studentService.downloadNote(id)
       const url = window.URL.createObjectURL(new Blob([blob]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', filename)
-      document.body.appendChild(link)
-      link.click()
-      link.parentNode.removeChild(link)
-      fetchData()
-    } catch (error) {
-      toast.error('Download failed')
-    }
+      const a = document.createElement('a')
+      a.href = url; a.download = filename
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch { toast.error('Download failed') }
   }
 
   const handleGenerateSummary = async (id) => {
     setSummarizingId(id)
     try {
       const data = await studentService.summarizeNote(id)
-      toast.success('Summary generated successfully! 🤖')
-      setNotes(prev => prev.map(note => note.id === id ? { ...note, summary: data.summary } : note))
-      const currentNote = notes.find(n => n.id === id)
-      if (currentNote) {
-        setActiveSummaryNote({ ...currentNote, summary: data.summary })
-      } else {
-        fetchData()
-      }
-    } catch (error) {
-      toast.error('Failed to generate summary.')
-    } finally {
-      setSummarizingId(null)
-    }
+      toast.success('Summary generated! 🤖')
+      setNotes(prev => prev.map(n => n.id === id ? { ...n, summary: data.summary } : n))
+      const cur = notes.find(n => n.id === id)
+      if (cur) setActiveSummaryNote({ ...cur, summary: data.summary })
+    } catch { toast.error('Failed to generate summary.') }
+    finally { setSummarizingId(null) }
   }
 
-  const renderFormattedSummary = (text) => {
+  const renderSummary = (text) => {
     if (!text) return null
-    const lines = text.split('\n')
-    return lines.map((line, idx) => {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('##')) {
-        return (
-          <h2 key={idx} className={`font-outfit font-semibold text-lg mb-2 mt-4 first:mt-0 pb-1 border-b ${
-            isLight ? 'text-slate-800 border-slate-200' : 'text-white border-white/5'
-          }`}>
-            {trimmed.replace(/^##\s*/, '')}
-          </h2>
-        )
-      }
-      if (trimmed.startsWith('-') || trimmed.startsWith('*')) {
-        return (
-          <div key={idx} className={`text-sm flex items-start gap-2 mb-2 ml-2 leading-relaxed ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 shrink-0" />
-            <span>{trimmed.replace(/^[-*]\s*/, '')}</span>
-          </div>
-        )
-      }
-      const matchOrdered = trimmed.match(/^(\d+)\.\s*(.*)/)
-      if (matchOrdered) {
-        return (
-          <div key={idx} className={`text-sm flex items-start gap-2 mb-2 ml-2 leading-relaxed ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
-            <span className="text-blue-500 font-bold shrink-0">{matchOrdered[1]}.</span>
-            <span>{matchOrdered[2]}</span>
-          </div>
-        )
-      }
-      if (trimmed === '') return <div key={idx} className="h-2" />
-      return (
-        <p key={idx} className={`text-sm leading-relaxed mb-3 ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
-          {trimmed}
-        </p>
-      )
+    return text.split('\n').map((line, i) => {
+      const t = line.trim()
+      if (t.startsWith('##')) return <h2 key={i} className="font-bold text-base mb-2 mt-4 first:mt-0 pb-1 border-b border-slate-200 text-slate-800">{t.replace(/^##\s*/, '')}</h2>
+      if (t.startsWith('-') || t.startsWith('*')) return <div key={i} className="flex items-start gap-2 mb-1.5 ml-2 text-sm text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2 shrink-0" /><span>{t.replace(/^[-*]\s*/, '')}</span></div>
+      const m = t.match(/^(\d+)\.\s*(.*)/)
+      if (m) return <div key={i} className="flex items-start gap-2 mb-1.5 ml-2 text-sm text-slate-600"><span className="text-indigo-600 font-bold shrink-0">{m[1]}.</span><span>{m[2]}</span></div>
+      if (t === '') return <div key={i} className="h-1.5" />
+      return <p key={i} className="text-sm text-slate-600 leading-relaxed mb-2">{t}</p>
     })
   }
 
-  const getFileIconColors = (type) => {
-    const t = type.toLowerCase()
-    if (t.includes('pdf')) return { bg: isLight ? 'bg-red-50 text-red-600 border-red-200' : 'bg-red-500/10 text-red-500 border-red-500/20', icon: FileText }
-    if (t.includes('doc')) return { bg: isLight ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-blue-500/10 text-blue-500 border-blue-500/20', icon: FileText }
-    if (t.includes('ppt')) return { bg: isLight ? 'bg-orange-50 text-orange-600 border-orange-200' : 'bg-orange-500/10 text-orange-500 border-orange-500/20', icon: Presentation }
-    return { bg: isLight ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-white/5 text-white/50 border-white/10', icon: FileText }
+  const getFileInfo = (type) => {
+    const t = (type || '').toLowerCase()
+    if (t.includes('pdf')) return { label: 'PDF', color: 'text-red-600 bg-red-50 border-red-200', icon: FileText }
+    if (t.includes('doc')) return { label: 'DOC', color: 'text-blue-600 bg-blue-50 border-blue-200', icon: FileText }
+    if (t.includes('ppt')) return { label: 'PPT', color: 'text-orange-600 bg-orange-50 border-orange-200', icon: Presentation }
+    return { label: 'FILE', color: 'text-slate-500 bg-slate-100 border-slate-200', icon: File }
   }
 
-  const getSubjectColor = (id) => {
-    const sub = subjects.find(s => s.id === id)
-    return sub?.color || '#3B82F6'
+  // ── SUBJECTS PAGE ──────────────────────────────────────────────────────────
+  if (!selectedSubject) {
+    return (
+      <PageWrapper>
+        <style>{`
+          @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+          .sc-anim { animation: fadeUp .3s ease both; }
+        `}</style>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">My Subjects</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
+              {user?.branch || 'Your Course'} · Semester {user?.current_semester || 1}
+            </p>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-2">
+            <BookOpen className="w-4 h-4 text-indigo-500" />
+            <span className="text-sm font-bold text-indigo-700">{subjects.length} Subjects</span>
+          </div>
+        </div>
+
+        {/* Loading skeleton */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1,2,3,4,5,6].map(i => (
+              <div key={i} className="h-44 bg-slate-100 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+
+        ) : subjects.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-3xl p-16 text-center max-w-xs mx-auto shadow-sm">
+            <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <p className="font-bold text-slate-700">No subjects yet</p>
+            <p className="text-xs text-slate-400 mt-1">Subjects for your semester haven't been added yet.</p>
+          </div>
+
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {subjects.map((sub, idx) => {
+              const c = getColor(idx)
+              const initials = getInitials(sub.name)
+              const noteCount = sub.notes_count ?? sub.note_count ?? 0
+
+              return (
+                <button
+                  key={sub.id}
+                  onClick={() => handleSelectSubject(sub)}
+                  className="sc-anim text-left rounded-2xl bg-white border border-slate-200 hover:border-slate-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer group overflow-hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400"
+                  style={{ animationDelay: `${idx * 55}ms` }}
+                >
+                  {/* Top section with subject color */}
+                  <div className="px-5 pt-5 pb-4" style={{ backgroundColor: c.bg }}>
+                    <div className="flex items-start justify-between">
+                      {/* Big initial circle */}
+                      <div
+                        className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black shadow-sm ring-4"
+                        style={{ backgroundColor: c.accent, color: '#fff', ringColor: c.ring }}
+                      >
+                        {initials}
+                      </div>
+                      {/* Arrow */}
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors" style={{ backgroundColor: `${c.accent}20` }}>
+                        <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" style={{ color: c.accent }} />
+                      </div>
+                    </div>
+
+                    {/* Code badge */}
+                    <div className="mt-3">
+                      <span
+                        className="text-[10px] font-mono font-bold tracking-widest uppercase px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: `${c.accent}20`, color: c.text }}
+                      >
+                        {sub.code}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Bottom info section */}
+                  <div className="px-5 py-4 bg-white">
+                    <h3 className="font-bold text-sm text-slate-800 leading-snug line-clamp-2 group-hover:text-indigo-700 transition-colors mb-3">
+                      {sub.name}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                        Sem {sub.semester_number}
+                      </span>
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: noteCount > 0 ? `${c.accent}15` : '#F1F5F9', color: noteCount > 0 ? c.text : '#94A3B8' }}
+                      >
+                        {noteCount} {noteCount === 1 ? 'Note' : 'Notes'}
+                      </span>
+                      {sub.credit_hours && (
+                        <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full">
+                          {sub.credit_hours} Cr
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </PageWrapper>
+    )
   }
+
+  // ── NOTES PAGE ─────────────────────────────────────────────────────────────
+  const subjectIdx = subjects.findIndex(s => s.id === selectedSubject.id)
+  const c = getColor(subjectIdx)
+  const initials = getInitials(selectedSubject.name)
 
   return (
     <PageWrapper>
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <div>
-          <h1 className={`text-3xl font-outfit font-extrabold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-            {user?.course_code ? `${user.course_code} Semester ${user.current_semester} — Study Materials` : "My Notes"}
-          </h1>
-          <div className="flex items-center gap-2 mt-2">
-            <span className={`text-xs px-3 py-1 rounded-full font-bold border ${
-              isLight ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-blue-500/10 border-blue-500/20 text-blue-300'
-            }`}>
-              Showing notes for {user?.course_code || 'MCA'} Sem {user?.current_semester || 4} · {filteredNotes.length} files
+      <style>{`
+        @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        .nc-anim { animation: fadeUp .3s ease both; }
+      `}</style>
+
+      {/* Subject header card */}
+      <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-sm mb-8" style={{ backgroundColor: c.bg }}>
+        <div className="px-6 py-5 flex items-center gap-4">
+          {/* Back */}
+          <button
+            onClick={handleBack}
+            className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer shrink-0 shadow-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+
+          {/* Initials */}
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-black text-white shadow-md shrink-0"
+            style={{ backgroundColor: c.accent }}
+          >
+            {initials}
+          </div>
+
+          {/* Text */}
+          <div className="min-w-0">
+            <span
+              className="text-[10px] font-mono font-bold tracking-widest uppercase px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: `${c.accent}25`, color: c.text }}
+            >
+              {selectedSubject.code}
             </span>
+            <h1 className="text-lg font-extrabold text-slate-900 mt-0.5 leading-tight truncate">{selectedSubject.name}</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] text-slate-500 font-semibold">Sem {selectedSubject.semester_number}</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-[10px] font-semibold" style={{ color: c.text }}>{notes.length} files loaded</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
-          {[1,2,3].map(i => (
-            <div key={i} className={`h-56 border rounded-2xl ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-white/5 border-white/10'}`} />
-          ))}
+      {/* Notes */}
+      {notesLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1,2,3].map(i => <div key={i} className="h-48 bg-slate-100 rounded-2xl animate-pulse" />)}
         </div>
-      ) : filteredNotes.length === 0 ? (
-        <div className={`border rounded-2xl p-12 text-center max-w-md mx-auto shadow-2xl ${
-          isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
-        }`}>
-          <SearchX className={`w-12 h-12 mx-auto mb-4 ${isLight ? 'text-slate-300' : 'text-white/20'}`} />
-          <h3 className={`font-bold text-lg ${isLight ? 'text-slate-700' : 'text-white'}`}>No notes found</h3>
-          <p className={`text-sm mt-1 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>No study materials uploaded for this filter yet.</p>
+      ) : notes.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-14 text-center max-w-xs mx-auto shadow-sm">
+          <BookMarked className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <p className="font-bold text-slate-700">No notes uploaded yet</p>
+          <p className="text-xs text-slate-400 mt-1">Your faculty hasn't uploaded materials for this subject yet.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredNotes.map(note => {
-            const fileStyle = getFileIconColors(note.file_type)
-            const FileIcon = fileStyle.icon
-
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {notes.map((note, idx) => {
+            const fi = getFileInfo(note.file_type)
+            const FileIcon = fi.icon
             return (
-              <div 
-                key={note.id} 
-                className={`border rounded-2xl p-5 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between ${
-                  isLight 
-                    ? 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-md shadow-sm' 
-                    : 'bg-white/5 border-white/10 hover:border-blue-500/30'
-                }`}
+              <div
+                key={note.id}
+                className="nc-anim bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col"
+                style={{ animationDelay: `${idx * 45}ms` }}
               >
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border ${fileStyle.bg}`}>
-                      <FileIcon className="w-6 h-6" />
-                    </div>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
-                      isLight ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-white/5 text-white/50 border-white/5'
-                    }`}>
-                      {(note.file_size_kb / 1024).toFixed(2)} MB
+                {/* Coloured accent left bar inside top strip */}
+                <div className="h-1 w-full" style={{ backgroundColor: c.accent }} />
+
+                <div className="p-4 flex flex-col flex-1">
+                  {/* File type + size row */}
+                  <div className="flex items-center justify-between mb-3">
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg border ${fi.color}`}>
+                      <FileIcon className="w-3 h-3" />
+                      {fi.label}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {(note.file_size_kb / 1024).toFixed(1)} MB
                     </span>
                   </div>
 
-                  <h3 className={`font-bold text-md font-outfit line-clamp-2 min-h-[44px] ${isLight ? 'text-slate-800' : 'text-white'}`} title={note.title}>
+                  {/* Title */}
+                  <h3 className="font-bold text-sm text-slate-800 leading-snug line-clamp-2 flex-1 mb-3" title={note.title}>
                     {note.title}
                   </h3>
-                  
-                  <div className="mt-2">
+
+                  {/* Subject badge */}
+                  <div className="mb-3">
                     <SubjectBadge name={note.subject_name} />
                   </div>
-                </div>
 
-                <div>
-                  <div className={`mt-4 pt-3 border-t flex items-center justify-between text-[11px] font-semibold uppercase ${
-                    isLight ? 'border-slate-100 text-slate-400' : 'border-white/10 text-white/40'
-                  }`}>
-                    <span>{new Date(note.created_at).toLocaleDateString()}</span>
+                  {/* Date + downloads */}
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold border-t border-slate-100 pt-3 mb-3">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {new Date(note.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                    </span>
                     <span>↓ {note.download_count || 0}</span>
                   </div>
 
-                  <div className="flex gap-2 mt-4 pt-2">
-                    <button 
+                  {/* Buttons */}
+                  <div className="flex gap-2">
+                    <button
                       onClick={() => setActiveSummaryNote(note)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                        isLight 
-                          ? 'border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-700'
-                          : 'border-teal-500/25 bg-teal-500/5 hover:bg-teal-500/10 text-teal-400'
-                      }`}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold border cursor-pointer transition-colors"
+                      style={{ backgroundColor: `${c.accent}12`, borderColor: `${c.accent}30`, color: c.text }}
                     >
-                      <Eye className="w-3.5 h-3.5" /> Summary
+                      <Sparkles className="w-3.5 h-3.5" /> Summary
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleDownload(note.id, `${note.title}.${note.file_type.toLowerCase()}`)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                        isLight 
-                          ? 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700'
-                          : 'border-blue-500/25 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400'
-                      }`}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition-colors cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" /> Download
                     </button>
@@ -231,67 +343,55 @@ export default function StudentNotesPage() {
         </div>
       )}
 
-      {/* ── VIEW SUMMARY MODAL ── */}
+      {/* Summary Modal */}
       {activeSummaryNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className={`border rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl p-6 relative ${
-            isLight ? 'bg-white border-slate-200' : 'bg-[#0F172A] border-white/10'
-          }`}>
-            
-            {/* Modal Header */}
-            <div className={`flex justify-between items-center mb-6 border-b pb-4 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-              <div className="min-w-0">
-                <h3 className={`font-outfit font-extrabold text-lg truncate pr-6 ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeSummaryNote.title}</h3>
-                <div className="mt-1">
-                  <SubjectBadge name={activeSummaryNote.subject_name} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden">
+            <div className="h-1 w-full" style={{ backgroundColor: c.accent }} />
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-5">
+                <div className="min-w-0 pr-4">
+                  <h3 className="font-extrabold text-slate-900 text-base leading-snug line-clamp-2">{activeSummaryNote.title}</h3>
+                  <div className="mt-1"><SubjectBadge name={activeSummaryNote.subject_name} /></div>
                 </div>
+                <button onClick={() => setActiveSummaryNote(null)} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 cursor-pointer shrink-0 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button 
-                onClick={() => setActiveSummaryNote(null)}
-                className={`transition-colors cursor-pointer shrink-0 ${isLight ? 'text-slate-400 hover:text-slate-700' : 'text-white/50 hover:text-white'}`}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            {/* Summary content */}
-            <div className="overflow-y-auto max-h-[60vh] pr-2 scrollbar-thin">
-              {activeSummaryNote.summary ? (
-                <div className={`border p-5 rounded-2xl ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/3 border-white/5'}`}>
-                  {renderFormattedSummary(activeSummaryNote.summary)}
-                </div>
-              ) : summarizingId === activeSummaryNote.id ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className={`text-sm font-semibold animate-pulse ${isLight ? 'text-slate-500' : 'text-white/60'}`}>🤖 AI is reading your notes...</p>
-                </div>
-              ) : (
-                <div className="text-center py-16">
-                  <Sparkles className="w-12 h-12 text-blue-400 mx-auto mb-4 animate-pulse" />
-                  <h4 className={`font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>Generate Note Summary</h4>
-                  <p className={`text-xs mt-1 px-8 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Let the AI scan this document to build a summary for quick revision.</p>
-                  
-                  <button
-                    onClick={() => handleGenerateSummary(activeSummaryNote.id)}
-                    className="mt-6 inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm px-6 py-2.5 rounded-xl shadow-lg shadow-blue-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all"
-                  >
-                    <Sparkles className="w-4 h-4" /> Generate AI Summary
-                  </button>
-                </div>
-              )}
-            </div>
 
-            <div className={`flex justify-end pt-6 mt-4 border-t ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-              <button
-                onClick={() => setActiveSummaryNote(null)}
-                className={`px-5 py-2.5 border font-bold rounded-xl text-xs transition-colors cursor-pointer ${
-                  isLight 
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                    : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
-                }`}
-              >
-                Close Summary
-              </button>
+              <div className="overflow-y-auto max-h-[50vh]">
+                {activeSummaryNote.summary ? (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    {renderSummary(activeSummaryNote.summary)}
+                  </div>
+                ) : summarizingId === activeSummaryNote.id ? (
+                  <div className="flex flex-col items-center py-14 text-center">
+                    <div className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin mb-4" style={{ borderColor: `${c.accent}40`, borderTopColor: 'transparent', borderRightColor: c.accent }} />
+                    <p className="text-sm text-slate-500 font-semibold animate-pulse">🤖 AI is reading your notes…</p>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: `${c.accent}15` }}>
+                      <Sparkles className="w-7 h-7" style={{ color: c.accent }} />
+                    </div>
+                    <h4 className="font-bold text-slate-800">Generate AI Summary</h4>
+                    <p className="text-xs text-slate-400 mt-1">AI will scan this document for a quick-revision summary.</p>
+                    <button
+                      onClick={() => handleGenerateSummary(activeSummaryNote.id)}
+                      className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold cursor-pointer hover:opacity-90 transition-opacity shadow-md"
+                      style={{ backgroundColor: c.accent }}
+                    >
+                      <Sparkles className="w-4 h-4" /> Generate Summary
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4 mt-4 border-t border-slate-100">
+                <button onClick={() => setActiveSummaryNote(null)} className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-colors">
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

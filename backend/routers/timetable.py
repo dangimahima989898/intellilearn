@@ -69,7 +69,18 @@ def _check_conflicts(db: Session, slot_data: TimetableCreate, exclude_id: uuid.U
             Semester.semester_number == slot_data.semester_number
         ).first()
         if not semester:
-            raise HTTPException(status_code=404, detail=f"Semester {slot_data.semester_number} not found for course {course.name}.")
+            if 1 <= slot_data.semester_number <= (course.total_semesters or 8):
+                semester = Semester(
+                    id=uuid.uuid4(),
+                    course_id=slot_data.course_id,
+                    semester_number=slot_data.semester_number,
+                    academic_year="2025-2026",
+                    is_active=True
+                )
+                db.add(semester)
+                db.commit()
+            else:
+                raise HTTPException(status_code=400, detail=f"Semester number {slot_data.semester_number} is out of bounds for course {course.name}.")
 
     # 5. Fetch existing slots
     base_q = db.query(Timetable).filter(
@@ -97,9 +108,10 @@ def _check_conflicts(db: Session, slot_data: TimetableCreate, exclude_id: uuid.U
     if slot_data.course_id and slot_data.semester_number:
         for ex in existing:
             if ex.course_id and str(ex.course_id) == str(slot_data.course_id) and ex.semester_number == slot_data.semester_number and overlaps(ex) and date_overlaps(ex):
+                c_subj = ex.subject.name if ex.subject else "Unknown"
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Timetable conflict: Semester {slot_data.semester_number} already has a class on {slot_data.day_of_week} that overlaps {slot_data.start_time}–{slot_data.end_time}."
+                    detail=f"Timetable conflict: Semester {slot_data.semester_number} already has class '{c_subj}' on {slot_data.day_of_week} that overlaps {slot_data.start_time}–{slot_data.end_time}."
                 )
 
     # 7. Faculty double-booking, leave, and availability conflicts
@@ -107,9 +119,12 @@ def _check_conflicts(db: Session, slot_data: TimetableCreate, exclude_id: uuid.U
         faculty_uuid = uuid.UUID(str(slot_data.faculty_id))
         for ex in existing:
             if ex.faculty_id and str(ex.faculty_id) == str(faculty_uuid) and overlaps(ex) and date_overlaps(ex):
+                c_subj = ex.subject.name if ex.subject else "Unknown"
+                c_course = ex.subject.course.code if (ex.subject and ex.subject.course) else "N/A"
+                c_sem = ex.semester_number
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Faculty conflict: This faculty member already has a class on {slot_data.day_of_week} that overlaps {slot_data.start_time}–{slot_data.end_time}."
+                    detail=f"Faculty conflict: This faculty member already teaches '{c_subj}' ({c_course} Sem {c_sem}) on {slot_data.day_of_week} during {ex.start_time.strftime('%H:%M')}–{ex.end_time.strftime('%H:%M')}."
                 )
 
         from datetime import date
@@ -151,9 +166,12 @@ def _check_conflicts(db: Session, slot_data: TimetableCreate, exclude_id: uuid.U
     if slot_data.room:
         for ex in existing:
             if ex.room and ex.room.strip().lower() == slot_data.room.strip().lower() and overlaps(ex) and date_overlaps(ex):
+                c_subj = ex.subject.name if ex.subject else "Unknown"
+                c_course = ex.subject.course.code if (ex.subject and ex.subject.course) else "N/A"
+                c_sem = ex.semester_number
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Room conflict: Room '{slot_data.room}' is already booked on {slot_data.day_of_week} during {slot_data.start_time}–{slot_data.end_time}."
+                    detail=f"Room conflict: Room '{slot_data.room}' is already booked for '{c_subj}' ({c_course} Sem {c_sem}) on {slot_data.day_of_week} during {ex.start_time.strftime('%H:%M')}–{ex.end_time.strftime('%H:%M')}."
                 )
 
 

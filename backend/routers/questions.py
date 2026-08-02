@@ -104,6 +104,13 @@ async def generate_questions(
             detail=f"Subject with code '{req.subject_code}' not found or is archived"
         )
     
+    # Enforce current semester matches subject's semester
+    if current_user.current_semester != subject.semester_number:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. This subject belongs to a different semester."
+        )
+    
     # ── Duplicate Prevention: Check existing unanswered questions ──────────
     from models.quiz_answer import QuizAnswer
     from models.quiz_attempt import QuizAttempt
@@ -311,6 +318,9 @@ def list_questions(
     query = db.query(Question, Subject.name.label("subject_name")).join(Subject, Question.subject_id == Subject.id)
     if not include_archived:
         query = query.filter(Subject.is_archived == False)
+        
+    if current_user.role == "student":
+        query = query.filter(Subject.semester_number == current_user.current_semester)
     
     if subject_id:
         query = query.filter(Question.subject_id == subject_id)

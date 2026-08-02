@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import {
   GraduationCap,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import axios from "axios"
 import toast from "react-hot-toast"
+import courseService from "../services/courseService"
 
 const API_BASE_URL = "http://localhost:8000/api"
 
@@ -37,6 +38,30 @@ export default function RequestAccessPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [checkingStatus, setCheckingStatus] = useState(false)
   const [statusResult, setStatusResult] = useState(null)
+
+  const [courses, setCourses] = useState([])
+
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const data = await courseService.getCourses()
+        setCourses(data)
+        if (data.length > 0) {
+          setBranch(data[0].code)
+        }
+      } catch (err) {
+        console.error("Failed to load courses:", err)
+      }
+    }
+    fetchCourses()
+  }, [])
+
+  const coursesToRender = courses.length > 0 ? courses.map(c => ({ id: c.id, code: c.code })) : [
+    { id: "MCA", code: "MCA" },
+    { id: "BCA", code: "BCA" },
+    { id: "BSc CS", code: "BSc CS" },
+    { id: "MSc CS", code: "MSc CS" },
+  ]
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -291,9 +316,9 @@ export default function RequestAccessPage() {
                       onChange={(e) => setBranch(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-3 text-white focus:outline-none focus:border-blue-500 transition-all text-sm appearance-none"
                     >
-                      {["MCA", "BCA", "BSc CS", "MSc CS"].map((b) => (
-                        <option key={b} value={b} className="bg-[#0f172a] text-white">
-                          {b}
+                      {coursesToRender.map((b) => (
+                        <option key={b.id} value={b.code} className="bg-[#0f172a] text-white">
+                          {b.code}
                         </option>
                       ))}
                     </select>

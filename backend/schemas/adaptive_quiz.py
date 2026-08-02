@@ -7,6 +7,7 @@ from schemas.question import QuestionOut
 class QuizStartRequest(BaseModel):
     subject_id: UUID
     topic: Optional[str] = "mixed"
+    num_questions: Optional[int] = 10
 
 class QuizStartResponse(BaseModel):
     attempt_id: UUID
@@ -89,6 +90,18 @@ class DifficultyProgressionItem(BaseModel):
     is_correct: bool
     topic: str
 
+class QuestionReviewItem(BaseModel):
+    id: UUID
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    selected_answer: str
+    correct_answer: str
+    is_correct: bool
+    explanation: Optional[str] = None
+
 class QuizReportResponse(BaseModel):
     session_id: UUID
     score: float
@@ -105,6 +118,7 @@ class QuizReportResponse(BaseModel):
     predicted_readiness: float
     readiness_label: str
     subject_name: str
+    questions_review: List[QuestionReviewItem] = []
 
 class ExplainRequest(BaseModel):
     question_id: UUID

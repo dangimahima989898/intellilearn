@@ -52,9 +52,30 @@ async def get_today_challenge(
     # 2. If NOT: generate one via LLM
     if not challenge:
         try:
+            active_subjects = db.query(Subject).filter(Subject.is_archived == False).all()
+            subject_codes = [sub.code for sub in active_subjects if sub.code]
+            subject_list_str = ", ".join(subject_codes) if subject_codes else "DSA, DBMS, OS, CN, Java, Python"
+            
+            dynamic_prompt = f"""Generate ONE challenging multiple choice question suitable as a daily challenge for MCA students.
+Choose a random subject from: {subject_list_str}.
+The question should be HARD difficulty and thought-provoking.
+
+Return ONLY a valid JSON object (no markdown):
+{{
+  "subject": "chosen_subject_code_exactly_from_the_list",
+  "topic": "Specific topic name",
+  "question": "The full question text?",
+  "option_a": "...",
+  "option_b": "...",
+  "option_c": "...",
+  "option_d": "...",
+  "correct_answer": "b",
+  "explanation": "Detailed explanation of the correct answer (3-4 sentences)"
+}}"""
+
             raw_response = await get_llm_response(
                 messages=[{"role": "user", "content": "Generate today's challenge question."}],
-                system_prompt=DAILY_CHALLENGE_PROMPT,
+                system_prompt=dynamic_prompt,
                 max_tokens=2000
             )
             # Parse JSON

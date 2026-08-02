@@ -30,18 +30,19 @@ function buildNavGroups(role, badgeCounts = {}) {
         items: [
           { name: 'My Subjects', icon: BookOpen, path: '/admin/my-subjects' },
           { name: 'My Schedule', icon: Calendar, path: '/admin/my-schedule' },
+          { name: 'Manage Topics', icon: Sparkles, path: '/admin/topics' },
           { name: 'Notes & Materials', icon: FileText, path: '/admin/notes' },
           { name: 'Doubt Board', icon: MessageSquare, path: '/admin/doubts', badge: doubtsCount },
           { name: 'AI Answer Review', icon: Shield, path: '/admin/ai-answer-review', badge: aiCount },
           { name: 'Quiz Analytics', icon: BarChart3, path: '/admin/quiz-analytics' },
           { name: 'Announcements', icon: Bell, path: '/admin/notifications', badge: notificationCount },
+          { name: 'Archive', icon: Archive, path: '/admin/archive' },
         ]
       },
       {
         id: 'leave', label: 'Leave', icon: Send,
         items: [
           { name: 'Apply Leave', icon: Send,  path: '/admin/apply-leave' },
-          { name: 'Leave Status', icon: Clock, path: '/admin/leave-status' },
         ]
       }
     ]
@@ -62,7 +63,8 @@ function buildNavGroups(role, badgeCounts = {}) {
     {
       id: 'people', label: 'People', icon: Users,
       items: [
-        { name: 'Students',           icon: Users,         path: '/admin/students', badge: pendingCount },
+        { name: 'Access Requests',    icon: UserCheck,     path: '/admin/pending-requests', badge: pendingCount },
+        { name: 'Students',           icon: Users,         path: '/admin/students' },
         { name: 'Faculty Management', icon: UserCheck,     path: '/admin/faculty' },
         { name: 'Leave Requests',     icon: ClipboardList, path: '/admin/leave-requests', badge: leaveCount },
         { name: 'Doubt Board',        icon: MessageSquare, path: '/admin/doubts', badge: doubtsCount },
@@ -360,6 +362,7 @@ function SidebarInner({ user, navGroups, collapsed, isMobile, expandedGroups, to
             fontSize: 9, fontWeight: 700, padding: '4px 8px', borderRadius: 999,
             border: `1px solid ${portalBorder}`,
             textTransform: 'uppercase', letterSpacing: '0.07em',
+            whiteSpace: 'nowrap'
           }}>
             {user?.role ? user.role.replace('_', ' ') : 'Admin'} Portal
           </div>
@@ -486,9 +489,9 @@ export default function AdminLayout() {
   const fetchBadgeCounts = async () => {
     if (!user) return
     try {
-      // 1. Pending Students (Admin/HOD only)
+            // 1. Pending Students (Admin/HOD only)
       const fetchStudents = async () => {
-        if (['super_admin', 'hod'].includes(user.role)) {
+        if (user.role === 'super_admin' || user.role === 'faculty') {
           const r = await api.get('/api/admin/access-requests?status=pending')
           return r.data.length
         }
@@ -497,7 +500,7 @@ export default function AdminLayout() {
 
       // 2. Pending Leaves (HOD/Admin only)
       const fetchLeaves = async () => {
-        if (['super_admin', 'hod'].includes(user.role)) {
+        if (user.role === 'super_admin') {
           const r = await api.get('/api/v1/hod/leave/pending')
           return r.data.length
         }
@@ -515,7 +518,7 @@ export default function AdminLayout() {
         if (user.role === 'faculty') {
           const r = await api.get('/api/faculty/ai-reports')
           return r.data.filter(report => report.status === 'pending').length
-        } else if (['super_admin', 'hod'].includes(user.role)) {
+        } else if (user.role === 'super_admin') {
           const r = await api.get('/api/hod/escalated-ai-reports')
           return r.data.filter(report => report.status === 'escalated' || report.status === 'pending').length
         }
@@ -638,20 +641,6 @@ export default function AdminLayout() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button
-                onClick={toggleTheme}
-                title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-                style={{
-                  width: 30, height: 30, borderRadius: '50%',
-                  border: isLight ? '1px solid #E2E8F0' : '1px solid rgba(255,255,255,0.1)',
-                  background: isLight ? '#F9FAFB' : 'rgba(255,255,255,0.05)', cursor: 'pointer',
-                  color: isLight ? '#4B5563' : 'rgba(255,255,255,0.6)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                {theme === 'dark' ? <Sun style={{ width: 14, height: 14 }} /> : <Moon style={{ width: 14, height: 14 }} />}
-              </button>
-
               <NotificationBell />
 
               <div style={{ width: 1, height: 20, background: isLight ? '#E5E7EB' : 'rgba(255,255,255,0.1)' }} />
@@ -667,7 +656,8 @@ export default function AdminLayout() {
                     fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                     border: `1px solid ${isLight ? 'rgba(124, 58, 237, 0.15)' : 'rgba(124, 58, 237, 0.3)'}`,
                     textTransform: 'capitalize',
-                    letterSpacing: '0.03em'
+                    letterSpacing: '0.03em',
+                    whiteSpace: 'nowrap'
                   }}>
                     {user.role.replace('_', ' ')}
                   </span>

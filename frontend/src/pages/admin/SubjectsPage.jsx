@@ -349,35 +349,99 @@ export default function SubjectsPage() {
 
   // ── When dept changes in form, load its semesters
   useEffect(() => {
-    if (!form.department_id) { setDeptSemesters([]); return }
+    if (!form.department_id) {
+      setDeptSemesters([]);
+      return;
+    }
     hodService.getDeptSemesters(form.department_id).then(data => {
-      setDeptSemesters(data.semesters || [])
-      // Reset semester if out of range
-      if (!data.semesters.includes(form.semester_no)) {
-        setForm(p => ({ ...p, semester_no: data.semesters[0] || 1 }))
+      const sems = data.semesters || [];
+      setDeptSemesters(sems);
+      // Reset semester if out of range or not set
+      if (form.semester_no && !sems.includes(Number(form.semester_no))) {
+        setForm(p => ({ ...p, semester_no: sems[0] || 1 }));
+      } else if (!form.semester_no && sems.length > 0) {
+        setForm(p => ({ ...p, semester_no: sems[0] }));
       }
     }).catch(() => setDeptSemesters([]))
   }, [form.department_id])
 
   // ── When dept changes in form, load faculty
   useEffect(() => {
-    if (!form.department_id) { setFacultyList([]); return }
+    if (!form.department_id) {
+      setFacultyList([]);
+      return;
+    }
     hodService.getSubjectFaculty(form.department_id).then(data => {
-      setFacultyList(data || [])
+      const list = data || [];
+      setFacultyList(list);
+      // Reset faculty_id if it's no longer valid for the selected department
+      if (form.faculty_id && !list.some(f => f.id === form.faculty_id)) {
+        setForm(p => ({ ...p, faculty_id: '' }));
+      }
     }).catch(() => setFacultyList([]))
   }, [form.department_id])
+
 
   // ── Validate form
   const validate = () => {
     const errs = {}
-    if (!form.subject_code.trim()) errs.subject_code = 'Subject code is required'
-    else if (!/^[A-Z0-9\-_]{2,20}$/i.test(form.subject_code.trim())) errs.subject_code = 'Code must be 2–20 alphanumeric characters'
-    if (!form.subject_name.trim()) errs.subject_name = 'Subject name is required'
-    if (!form.department_id) errs.department_id = 'Department is required'
-    if (!form.semester_no) errs.semester_no = 'Semester is required'
-    if (!form.credits || form.credits < 1 || form.credits > 10) errs.credits = 'Credits must be 1–10'
+    const code = (form.subject_code || '').trim()
+    const name = (form.subject_name || '').trim()
+    const desc = (form.description || '').trim()
+    const credsStr = (String(form.credits) || '').trim()
+
+    // Subject Code
+    if (!code) {
+      errs.subject_code = 'Subject code is required'
+    } else if (code.length < 2) {
+      errs.subject_code = 'Subject code must be at least 2 characters'
+    } else if (code.length > 20) {
+      errs.subject_code = 'Subject code must not exceed 20 characters'
+    } else if (!/^[A-Z0-9\-_]{2,20}$/i.test(code)) {
+      errs.subject_code = 'Code must be alphanumeric characters, hyphens, or underscores'
+    }
+
+    // Subject Name
+    if (!name) {
+      errs.subject_name = 'Subject name is required'
+    } else if (name.length > 255) {
+      errs.subject_name = 'Subject name must not exceed 255 characters'
+    } else if (!/^[A-Za-z0-9\s\-_\.\(\)]+$/.test(name)) {
+      errs.subject_name = 'Subject name contains invalid characters'
+    }
+
+    // Department
+    if (!form.department_id) {
+      errs.department_id = 'Department is required'
+    }
+
+    // Semester
+    if (!form.semester_no) {
+      errs.semester_no = 'Semester is required'
+    }
+
+    // Credits
+    if (!credsStr) {
+      errs.credits = 'Credits is required'
+    } else {
+      const creditsNum = Number(credsStr)
+      if (isNaN(creditsNum) || !/^\d+$/.test(credsStr)) {
+        errs.credits = 'Credits must be a valid number'
+      } else if (creditsNum < 1 || creditsNum > 10) {
+        errs.credits = 'Credits must be between 1 and 10'
+      }
+    }
+
+    // Description
+    if (desc.length > 255) {
+      errs.description = 'Description must not exceed 255 characters'
+    } else if (desc && !/^[A-Za-z0-9\s\-_,\.\?\!\(\)\/\n\r]+$/.test(desc)) {
+      errs.description = 'Description contains invalid characters'
+    }
+
     return errs
   }
+
 
   // ── Open modals
   const openCreate = () => {
@@ -812,7 +876,11 @@ export default function SubjectsPage() {
                     type="text"
                     placeholder="e.g. CS101"
                     value={form.subject_code}
-                    onChange={e => { setForm(p => ({ ...p, subject_code: e.target.value.toUpperCase() })); setFormErrors(p => ({ ...p, subject_code: '' })) }}
+                    onChange={e => {
+                      const filtered = e.target.value.replace(/[^A-Za-z0-9\-_]/g, '').toUpperCase();
+                      setForm(p => ({ ...p, subject_code: filtered }));
+                      setFormErrors(p => ({ ...p, subject_code: '' }));
+                    }}
                     className={inputCls('subject_code')}
                     maxLength={20}
                   />
@@ -824,8 +892,13 @@ export default function SubjectsPage() {
                     type="text"
                     placeholder="e.g. Data Structures"
                     value={form.subject_name}
-                    onChange={e => { setForm(p => ({ ...p, subject_name: e.target.value })); setFormErrors(p => ({ ...p, subject_name: '' })) }}
+                    onChange={e => {
+                      const filtered = e.target.value.replace(/[^A-Za-z0-9\s\-_\.\(\)]/g, '');
+                      setForm(p => ({ ...p, subject_name: filtered }));
+                      setFormErrors(p => ({ ...p, subject_name: '' }));
+                    }}
                     className={inputCls('subject_name')}
+                    maxLength={255}
                   />
                   {formErrors.subject_name && <p className="text-xs text-[#DC2626] mt-1">{formErrors.subject_name}</p>}
                 </div>
@@ -838,7 +911,10 @@ export default function SubjectsPage() {
                   <div className="relative">
                     <select
                       value={form.department_id}
-                      onChange={e => { setForm(p => ({ ...p, department_id: e.target.value, semester_no: 1 })); setFormErrors(p => ({ ...p, department_id: '' })) }}
+                      onChange={e => {
+                        setForm(p => ({ ...p, department_id: e.target.value, semester_no: 1, faculty_id: '' }));
+                        setFormErrors(p => ({ ...p, department_id: '', semester_no: '', faculty_id: '' }));
+                      }}
                       className={selectCls('department_id')}
                     >
                       <option value="">Select Department</option>
@@ -875,11 +951,16 @@ export default function SubjectsPage() {
                 <div>
                   <label className="block text-xs font-bold text-[#374151] mb-1.5">Credits <span className="text-red-500">*</span></label>
                   <input
-                    type="number"
-                    min={1} max={10}
+                    type="text"
+                    placeholder="e.g. 3"
                     value={form.credits}
-                    onChange={e => { setForm(p => ({ ...p, credits: e.target.value })); setFormErrors(p => ({ ...p, credits: '' })) }}
+                    onChange={e => {
+                      const filtered = e.target.value.replace(/[^0-9]/g, '');
+                      setForm(p => ({ ...p, credits: filtered }));
+                      setFormErrors(p => ({ ...p, credits: '' }));
+                    }}
                     className={inputCls('credits')}
+                    maxLength={3}
                   />
                   {formErrors.credits && <p className="text-xs text-[#DC2626] mt-1">{formErrors.credits}</p>}
                 </div>
@@ -943,9 +1024,17 @@ export default function SubjectsPage() {
                   rows={3}
                   placeholder="Brief description of the subject…"
                   value={form.description}
-                  onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                  className="w-full bg-[#F6F8FB] border border-[#E5E7EB] rounded-[10px] px-4 py-2.5 text-sm text-[#1F2937] focus:outline-none focus:border-[#7C3AED] resize-none"
+                  onChange={e => {
+                    const filtered = e.target.value.replace(/[^A-Za-z0-9\s\-_,\.\?\!\(\)\/\n\r]/g, '');
+                    setForm(p => ({ ...p, description: filtered }));
+                    setFormErrors(p => ({ ...p, description: '' }));
+                  }}
+                  className={`w-full bg-[#F6F8FB] border rounded-[10px] px-4 py-2.5 text-sm text-[#1F2937] focus:outline-none resize-none transition ${
+                    formErrors.description ? 'border-[#DC2626] focus:border-[#DC2626]' : 'border-[#E5E7EB] focus:border-[#7C3AED]'
+                  }`}
+                  maxLength={255}
                 />
+                {formErrors.description && <p className="text-xs text-[#DC2626] mt-1">{formErrors.description}</p>}
               </div>
             </div>
 

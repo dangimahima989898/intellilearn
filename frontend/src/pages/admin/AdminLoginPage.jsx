@@ -64,14 +64,7 @@ export default function AdminLoginPage() {
 
   return (
     <div className="min-h-[100dvh] bg-[#0A0F1E] font-dm text-white flex relative overflow-hidden">
-      {/* Floating Theme Toggle */}
-      <button
-        onClick={toggleTheme}
-        title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-        className="fixed top-6 right-6 z-50 w-10 h-10 flex items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all duration-200 shadow-lg"
-      >
-        {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-      </button>
+
       
       {/* Aurora Background Orbs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -84,14 +77,14 @@ export default function AdminLoginPage() {
         <div className="flex items-center gap-3">
           <GraduationCap className="w-8 h-8 text-indigo-400" />
           <span className="font-outfit font-extrabold text-2xl text-white">
-            IntelliLearn Admin
+            IntelliLearn HOD
           </span>
         </div>
 
         <div className="my-auto">
           <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs px-3.5 py-1.5 rounded-full font-semibold mb-6">
             <Shield className="w-3.5 h-3.5" />
-            Administrative Desk
+            Super Admin (HOD) Desk
           </div>
           <h1 className="text-5xl font-outfit font-bold text-white mb-2 leading-tight">
             Manage & Oversee
@@ -134,63 +127,68 @@ export default function AdminLoginPage() {
         </div>
 
         <p className="text-white/30 text-sm">
-          &copy; {new Date().getFullYear()} IntelliLearn Admin. Secured console access.
+          &copy; {new Date().getFullYear()} IntelliLearn Super Admin (HOD). Secured console access.
         </p>
       </div>
 
       {/* RIGHT COLUMN */}
       <div className="flex-1 flex items-center justify-center p-8 relative z-10">
-        <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl animate-fade-in relative z-20">
+        <div className="w-full max-w-md backdrop-blur-xl rounded-3xl p-8 shadow-2xl animate-fade-in relative z-20 transition-all duration-300"
+             style={{
+               background: "#F5F3FF",
+               border: "1px solid #DDD6FE",
+               color: "#1E1B4B",
+             }}>
           
-          <Link to="/login" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-xs font-semibold mb-6 transition-colors group">
+          <Link to="/login" className="inline-flex items-center gap-2 text-violet-600 hover:text-violet-800 text-xs font-semibold mb-6 transition-colors group">
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             Back to Portal Selector
           </Link>
 
           <div className="mb-8">
-            <div className="inline-block bg-indigo-500/20 text-indigo-300 text-xs px-3 py-1 rounded-full font-semibold tracking-wide">
-              🔒 Administrative Portal
+            <div className="inline-block bg-[#8B5CF6]/10 text-[#7C3AED] text-xs px-3 py-1 rounded-full font-semibold tracking-wide border border-[#DDD6FE]">
+              🔒 Super Admin (HOD) Portal
             </div>
-            <h2 className="text-3xl font-outfit font-bold text-white mt-3">Admin Sign In</h2>
-            <p className="text-white/50 text-sm mt-1">Sign in with administrative credentials</p>
+            <h2 className="text-3xl font-outfit font-bold text-[#1E1B4B] mt-3">Super Admin (HOD) Sign In</h2>
+            <p className="text-violet-600/75 text-sm mt-1">Sign in with Super Admin (HOD) credentials</p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
-              <label className="block text-white/70 text-sm font-medium mb-1">
-                Admin Email
+              <label className="block text-violet-900 text-sm font-medium mb-1">
+                Super Admin (HOD) Email
               </label>
               <div className="relative group">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30 group-focus-within:text-indigo-400 transition-colors" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-violet-400 group-focus-within:text-[#8B5CF6] transition-colors" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-white/8 border border-white/15 rounded-xl pl-10 pr-4 py-3.5 text-white placeholder-white/25 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all font-medium"
-                  placeholder="admin@intellilearn.com"
+                  className="w-full bg-white border border-[#DDD6FE] rounded-xl pl-10 pr-4 py-3.5 text-[#1E1B4B] placeholder-violet-400/60 focus:outline-none focus:border-[#8B5CF6] focus:ring-1 focus:ring-[#8B5CF6]/50 transition-all font-medium"
+                  placeholder="super_admin@intellilearn.com"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-white/70 text-sm font-medium mb-1">
+              <label className="block text-violet-900 text-sm font-medium mb-1">
                 Password
               </label>
               <div className="relative group">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30 group-focus-within:text-indigo-400 transition-colors" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-violet-400 group-focus-within:text-[#8B5CF6] transition-colors" />
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-white/8 border border-white/15 rounded-xl pl-10 pr-10 py-3.5 text-white placeholder-white/25 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all font-medium"
+                  className="w-full bg-white border border-[#DDD6FE] rounded-xl pl-10 pr-10 py-3.5 text-[#1E1B4B] placeholder-violet-400/60 focus:outline-none focus:border-[#8B5CF6] focus:ring-1 focus:ring-[#8B5CF6]/50 transition-all font-medium"
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-violet-400 hover:text-violet-600 transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -198,7 +196,7 @@ export default function AdminLoginPage() {
             </div>
 
             {error && (
-              <div className="bg-red-500/15 border border-red-500/30 rounded-xl p-3 text-red-300 text-sm flex items-center gap-2 mt-2">
+              <div className="bg-red-500/10 border border-red-500/25 rounded-xl p-3 text-red-700 text-sm flex items-center gap-2 mt-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
               </div>
@@ -207,7 +205,12 @@ export default function AdminLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold py-3.5 rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/25 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full mt-2 text-white font-semibold py-3.5 rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-violet-500/25 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              style={{
+                background: "#8B5CF6",
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "#7C3AED"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "#8B5CF6"}
             >
               {loading ? (
                 <>
@@ -221,24 +224,27 @@ export default function AdminLoginPage() {
           </form>
 
           <div className="mt-6 flex items-center gap-4">
-            <div className="flex-1 border-b border-white/10" />
-            <span className="text-white/30 text-xs uppercase tracking-wider font-semibold">Demo Access</span>
-            <div className="flex-1 border-b border-white/10" />
+            <div className="flex-1 border-b border-[#DDD6FE]" />
+            <span className="text-violet-400 text-xs uppercase tracking-wider font-semibold">Demo Access</span>
+            <div className="flex-1 border-b border-[#DDD6FE]" />
           </div>
 
           <div className="mt-4">
             <button 
               type="button"
               onClick={fillDemo}
-              className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white py-3 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              className="w-full hover:bg-white border border-[#A78BFA] text-[#8B5CF6] hover:text-[#7C3AED] py-3 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              style={{
+                background: "#F5F3FF"
+              }}
             >
-              <Shield className="w-4 h-4 text-indigo-400" />
-              Quick Admin Demo Sign In
+              <Shield className="w-4 h-4 text-[#8B5CF6]" />
+              Quick Super Admin (HOD) Demo Sign In
             </button>
           </div>
 
-          <div className="mt-8 text-center text-xs border-t border-white/10 pt-4 text-white/30 leading-relaxed">
-            Authorized administrative personnel only. IP logs are recorded for auditing purposes.
+          <div className="mt-8 text-center text-xs border-t border-[#DDD6FE] pt-4 text-violet-400/80 leading-relaxed">
+            Authorized Super Admin (HOD) and Faculty personnel only. IP logs are recorded for auditing purposes.
           </div>
 
         </div>

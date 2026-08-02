@@ -42,3 +42,5 @@ from .archived_item import ArchivedItem
 from .exam_schedule import ExamSchedule
 from .ai_answer_report import AIAnswerReport
 from .placement_test import PlacementTest, TestQuestion, TestAttempt, AttemptAnswer
+from .topic import Topic
+

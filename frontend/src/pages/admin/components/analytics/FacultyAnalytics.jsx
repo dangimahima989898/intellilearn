@@ -174,8 +174,8 @@ export default function FacultyAnalytics({ deptFilter }) {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-10 bg-red-50 border border-red-200 rounded-2xl p-6 gap-3">
-        <p className="text-red-600 text-sm font-semibold">{error}</p>
+      <div className="flex flex-col items-center justify-center py-10 bg-white/5 border border-white/10 rounded-2xl p-6 gap-3">
+        <p className="text-red-400 text-sm font-semibold">{error}</p>
         <button onClick={loadData} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition">
           Retry
         </button>

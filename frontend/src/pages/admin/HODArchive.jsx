@@ -7,6 +7,7 @@ import PageWrapper from '../../components/PageWrapper'
 import adminService from '../../services/adminService'
 import hodService from '../../services/hodService'
 import toast from 'react-hot-toast'
+import { useAuth } from '../../context/AuthContext'
 
 import ArchivedItemCard from './components/archive/ArchivedItemCard'
 import RestoreModal from './components/archive/RestoreModal'
@@ -51,6 +52,7 @@ function EmptyTabState({ type }) {
 }
 
 export default function HODArchive() {
+  const { user } = useAuth()
   const [subjectsRaw, setSubjectsRaw] = useState([])
   const [notesRaw, setNotesRaw] = useState([])
   const [announcementsRaw, setAnnouncementsRaw] = useState([])
@@ -130,11 +132,19 @@ export default function HODArchive() {
   }, [])
 
   // ── Combine all items ──
-  const allItems = useMemo(() => [
-    ...subjectsRaw,
-    ...notesRaw,
-    ...announcementsRaw,
-  ], [subjectsRaw, notesRaw, announcementsRaw])
+  const allItems = useMemo(() => {
+    if (user?.role === 'faculty') {
+      return [
+        ...notesRaw,
+        ...announcementsRaw,
+      ]
+    }
+    return [
+      ...subjectsRaw,
+      ...notesRaw,
+      ...announcementsRaw,
+    ]
+  }, [subjectsRaw, notesRaw, announcementsRaw, user])
 
   // ── Filter & sort ──
   const filteredItems = useMemo(() => {
@@ -325,7 +335,7 @@ export default function HODArchive() {
 
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-2xl p-1.5 overflow-x-auto">
-          {TABS.map(tab => (
+          {TABS.filter(tab => !(user?.role === 'faculty' && tab.id === 'subject')).map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
                 activeTab === tab.id

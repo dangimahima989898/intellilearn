@@ -200,103 +200,148 @@
    Light mode: light sidebar + light content
 ═══════════════════════════════════════════════════════════ */
 
-/* ── DARK MODE (default) — make white admin pages dark ── */
+/* ── DARK MODE (default) — make white admin/student pages dark ── */
 #admin-root .bg-white,
-#admin-root [class*="bg-white"] {
+#admin-root [class*="bg-white"],
+#student-root .bg-white,
+#student-root [class*="bg-white"] {
   background-color: #1E293B !important;
 }
 #admin-root .bg-\[\#F8F7FF\],
-#admin-root [class*="bg-[#F8F7FF]"] {
+#admin-root [class*="bg-[#F8F7FF]"],
+#student-root .bg-\[\#F8F7FF\],
+#student-root [class*="bg-[#F8F7FF]"] {
   background-color: #0F172A !important;
 }
 #admin-root .bg-slate-50,
 #admin-root .bg-slate-100,
-#admin-root .bg-slate-200 {
+#admin-root .bg-slate-200,
+#student-root .bg-slate-50,
+#student-root .bg-slate-100,
+#student-root .bg-slate-200 {
   background-color: rgba(255,255,255,0.04) !important;
 }
 #admin-root .text-slate-900,
-#admin-root .text-slate-800 {
+#admin-root .text-slate-800,
+#student-root .text-slate-900,
+#student-root .text-slate-800 {
   color: #f1f5f9 !important;
 }
-#admin-root .text-slate-700 {
+#admin-root .text-slate-700,
+#student-root .text-slate-700 {
   color: #e2e8f0 !important;
 }
 #admin-root .text-slate-600,
-#admin-root .text-slate-500 {
+#admin-root .text-slate-500,
+#student-root .text-slate-600,
+#student-root .text-slate-500 {
   color: #94a3b8 !important;
 }
-#admin-root .text-slate-400 {
+#admin-root .text-slate-400,
+#student-root .text-slate-400 {
   color: #64748b !important;
 }
 #admin-root .border-slate-100,
-#admin-root .border-slate-200 {
+#admin-root .border-slate-200,
+#student-root .border-slate-100,
+#student-root .border-slate-200 {
   border-color: rgba(255,255,255,0.08) !important;
 }
-#admin-root .border-slate-150 {
+#admin-root .border-slate-150,
+#student-root .border-slate-150 {
   border-color: rgba(255,255,255,0.1) !important;
 }
-#admin-root .shadow-sm {
+#admin-root .shadow-sm,
+#student-root .shadow-sm {
   box-shadow: 0 1px 8px rgba(0,0,0,0.4) !important;
 }
 #admin-root thead tr,
-#admin-root .bg-slate-50\/50 {
+#admin-root .bg-slate-50\/50,
+#student-root thead tr,
+#student-root .bg-slate-50\/50 {
   background-color: rgba(255,255,255,0.03) !important;
 }
-#admin-root tbody tr:hover {
+#admin-root tbody tr:hover,
+#student-root tbody tr:hover {
   background-color: rgba(255,255,255,0.04) !important;
 }
-/* Inputs inside admin dark mode */
+/* Inputs inside admin/student dark mode */
 #admin-root input[type="text"],
 #admin-root input[type="email"],
 #admin-root input[type="number"],
 #admin-root input[type="date"],
 #admin-root textarea,
-#admin-root select {
+#admin-root select,
+#student-root input[type="text"],
+#student-root input[type="email"],
+#student-root input[type="number"],
+#student-root input[type="date"],
+#student-root textarea,
+#student-root select {
   background-color: rgba(255,255,255,0.06) !important;
   border-color: rgba(255,255,255,0.1) !important;
   color: #f1f5f9 !important;
 }
 #admin-root input::placeholder,
-#admin-root textarea::placeholder {
+#admin-root textarea::placeholder,
+#student-root input::placeholder,
+#student-root textarea::placeholder {
   color: rgba(255,255,255,0.25) !important;
 }
 
-/* ── LIGHT MODE overrides — keep admin pages fully light ── */
+/* ── LIGHT MODE overrides — keep admin/student pages fully light ── */
 .light-theme #admin-root .bg-white,
-.light-theme #admin-root [class*="bg-white"] {
+.light-theme #admin-root [class*="bg-white"],
+.light-theme #student-root .bg-white,
+.light-theme #student-root [class*="bg-white"] {
   background-color: #ffffff !important;
 }
 .light-theme #admin-root .bg-\[\#F8F7FF\],
-.light-theme #admin-root [class*="bg-[#F8F7FF]"] {
+.light-theme #admin-root [class*="bg-[#F8F7FF]"],
+.light-theme #student-root .bg-\[\#F8F7FF\],
+.light-theme #student-root [class*="bg-[#F8F7FF]"] {
   background-color: #f8fafc !important;
 }
 .light-theme #admin-root .bg-slate-50,
-.light-theme #admin-root .bg-slate-100 {
+.light-theme #admin-root .bg-slate-100,
+.light-theme #student-root .bg-slate-50,
+.light-theme #student-root .bg-slate-100 {
   background-color: #f1f5f9 !important;
 }
-.light-theme #admin-root .bg-slate-200 {
+.light-theme #admin-root .bg-slate-200,
+.light-theme #student-root .bg-slate-200 {
   background-color: #e2e8f0 !important;
 }
 .light-theme #admin-root .text-slate-900,
-.light-theme #admin-root .text-slate-800 {
+.light-theme #admin-root .text-slate-800,
+.light-theme #student-root .text-slate-900,
+.light-theme #student-root .text-slate-800 {
   color: #0f172a !important;
 }
-.light-theme #admin-root .text-slate-700 {
+.light-theme #admin-root .text-slate-700,
+.light-theme #student-root .text-slate-700 {
   color: #334155 !important;
 }
 .light-theme #admin-root .text-slate-600,
-.light-theme #admin-root .text-slate-500 {
+.light-theme #admin-root .text-slate-500,
+.light-theme #student-root .text-slate-600,
+.light-theme #student-root .text-slate-500 {
   color: #475569 !important;
 }
-.light-theme #admin-root .text-slate-400 {
+.light-theme #admin-root .text-slate-400,
+.light-theme #student-root .text-slate-400 {
   color: #94a3b8 !important;
 }
 .light-theme #admin-root .border-slate-100,
 .light-theme #admin-root .border-slate-150,
-.light-theme #admin-root .border-slate-200 {
+.light-theme #admin-root .border-slate-200,
+.light-theme #student-root .border-slate-100,
+.light-theme #student-root .border-slate-150,
+.light-theme #student-root .border-slate-200 {
   border-color: #e2e8f0 !important;
 }
-.light-theme #admin-root .shadow-sm {
+.light-theme #admin-root .shadow-sm,
+.light-theme #student-root .shadow-sm {
   box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
 }
 .light-theme #admin-root input[type="text"],
@@ -304,13 +349,21 @@
 .light-theme #admin-root input[type="number"],
 .light-theme #admin-root input[type="date"],
 .light-theme #admin-root textarea,
-.light-theme #admin-root select {
+.light-theme #admin-root select,
+.light-theme #student-root input[type="text"],
+.light-theme #student-root input[type="email"],
+.light-theme #student-root input[type="number"],
+.light-theme #student-root input[type="date"],
+.light-theme #student-root textarea,
+.light-theme #student-root select {
   background-color: #f8fafc !important;
   border-color: #e2e8f0 !important;
   color: #1e293b !important;
 }
 .light-theme #admin-root input::placeholder,
-.light-theme #admin-root textarea::placeholder {
+.light-theme #admin-root textarea::placeholder,
+.light-theme #student-root input::placeholder,
+.light-theme #student-root textarea::placeholder {
   color: #94a3b8 !important;
 }
 
@@ -320,21 +373,29 @@
   /* sidebar handles its own colors via inline styles */
 }
 
-/* Admin main page background */
-#admin-root #admin-content > main {
+/* Admin/Student main page background */
+#admin-root #admin-content > main,
+#student-root > main,
+#student-root #student-content > main {
   background-color: #0A0F1E;
 }
-.light-theme #admin-root #admin-content > main {
+.light-theme #admin-root #admin-content > main,
+.light-theme #student-root > main,
+.light-theme #student-root #student-content > main {
   background-color: #f1f5f9;
 }
 
 /* Modals in dark mode */
 #admin-root .fixed.inset-0 .bg-white,
-#admin-root .fixed.inset-0 [class*="bg-white"] {
+#admin-root .fixed.inset-0 [class*="bg-white"],
+#student-root .fixed.inset-0 .bg-white,
+#student-root .fixed.inset-0 [class*="bg-white"] {
   background-color: #1E293B !important;
 }
 .light-theme #admin-root .fixed.inset-0 .bg-white,
-.light-theme #admin-root .fixed.inset-0 [class*="bg-white"] {
+.light-theme #admin-root .fixed.inset-0 [class*="bg-white"],
+.light-theme #student-root .fixed.inset-0 .bg-white,
+.light-theme #student-root .fixed.inset-0 [class*="bg-white"] {
   background-color: #ffffff !important;
 }
 

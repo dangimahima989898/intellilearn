@@ -107,7 +107,7 @@ export function AuthProvider({ children }) {
     logout,
     isAuthenticated: !!token && !!user,
 
-    isAdmin: ["super_admin", "hod", "faculty"].includes(user?.role),
+    isAdmin: ["super_admin", "faculty"].includes(user?.role),
     isStudent: user?.role === "student",
     semesterLabel: user?.current_semester ? `Semester ${user.current_semester}` : "",
     courseLabel: user?.course_code && user?.current_semester ? `${user.course_code} Semester ${user.current_semester}` : ""

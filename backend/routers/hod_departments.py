@@ -176,6 +176,18 @@ async def create_department(
     
     db.add(new_dept)
     
+    # Create corresponding Course record so it shows up in Schedule Manager and other dropdowns
+    new_course = Course(
+        id=uuid.uuid4(),
+        name=req.department_name.strip(),
+        code=code_upper,
+        total_semesters=req.total_semesters,
+        duration_years=(req.total_semesters + 1) // 2,
+        department_id=new_dept.department_id,
+        is_active=True
+    )
+    db.add(new_course)
+    
     # If HOD is assigned, update HOD user's designation and role
     if req.hod_id:
         hod_user_stmt = select(User).where(User.id == req.hod_id)
@@ -264,6 +276,21 @@ async def update_department(
     if "status" in update_data and update_data["status"]:
         dept.status = update_data["status"]
         
+    # Update corresponding course(s) to keep in sync
+    course_stmt = select(Course).where(Course.department_id == id)
+    course_res = await db.execute(course_stmt)
+    courses = course_res.scalars().all()
+    for course in courses:
+        if "department_name" in update_data:
+            course.name = update_data["department_name"].strip()
+        if "department_code" in update_data:
+            course.code = update_data["department_code"].strip().upper()
+        if "total_semesters" in update_data:
+            course.total_semesters = update_data["total_semesters"]
+            course.duration_years = (update_data["total_semesters"] + 1) // 2
+        if "status" in update_data:
+            course.is_active = (update_data["status"] == "Active")
+        
     await db.commit()
     await db.refresh(dept)
     return dept
@@ -286,10 +313,10 @@ async def delete_department(
     sub_res = await db.execute(sub_stmt)
     subjects_count = sub_res.scalar() or 0
     
-    # 2. Courses
-    course_stmt = select(func.count(Course.id)).where(Course.department_id == id)
-    course_res = await db.execute(course_stmt)
-    courses_count = course_res.scalar() or 0
+    # Get courses belonging to the department (to delete cascadingly if no blocker records exist)
+    course_select_stmt = select(Course).where(Course.department_id == id)
+    course_res = await db.execute(course_select_stmt)
+    dept_courses = course_res.scalars().all()
     
     # 3. Students
     student_stmt = select(func.count(User.id)).where(
@@ -307,11 +334,15 @@ async def delete_department(
     faculty_res = await db.execute(faculty_stmt)
     faculty_count = faculty_res.scalar() or 0
     
-    if subjects_count > 0 or courses_count > 0 or students_count > 0 or faculty_count > 0:
+    if subjects_count > 0 or students_count > 0 or faculty_count > 0:
         raise HTTPException(
             status_code=400,
             detail="Department cannot be deleted because it contains academic records."
         )
+        
+    # Delete courses belonging to the department
+    for course in dept_courses:
+        await db.delete(course)
         
     # Clear HOD user designation if applicable
     if dept.hod_id:
@@ -343,6 +374,14 @@ async def patch_department_status(
         raise HTTPException(status_code=404, detail="Department not found")
         
     dept.status = status
+    
+    # Update corresponding course(s) status
+    course_stmt = select(Course).where(Course.department_id == id)
+    course_res = await db.execute(course_stmt)
+    courses = course_res.scalars().all()
+    for course in courses:
+        course.is_active = (status == "Active")
+        
     await db.commit()
     return {"message": f"Department status updated to {status}"}
 

@@ -55,7 +55,7 @@ export default function StudentHome() {
     fetchData()
   }, [])
 
-  const streakValue = user?.streak_count || 12
+  const streakValue = user?.streak_count || 0
 
   // Derive quiz performance scores from API response
   const performanceData = overview?.subjects_studied?.map(s => ({
@@ -189,7 +189,7 @@ export default function StudentHome() {
           </div>
           <div>
             <h4 className={`font-extrabold text-lg ${isLight ? 'text-slate-900' : 'text-white'}`}>{streakValue} Day Streak</h4>
-            <p className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-amber-600' : 'text-white/40'}`}>Keep going!</p>
+            <p className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-amber-600' : 'text-white/40'}`}>{streakValue > 0 ? "Keep going!" : "Start your streak!"}</p>
           </div>
         </div>
       </div>

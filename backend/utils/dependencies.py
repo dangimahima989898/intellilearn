@@ -61,7 +61,7 @@ def require_role(*roles: str):
 def require_admin(current_user: User = Depends(require_role("super_admin"))) -> User:
     return current_user
 
-def require_hod_or_admin(current_user: User = Depends(require_role("super_admin", "hod"))) -> User:
+def require_hod_or_admin(current_user: User = Depends(require_role("super_admin", "faculty"))) -> User:
     return current_user
 
 def require_student(current_user: User = Depends(require_role("student"))) -> User:
@@ -93,8 +93,8 @@ def require_same_semester(semester_id: str):
 
 def require_subject_ownership(subject_id: str):
     """Check if faculty is assigned to this subject."""
-    def ownership_checker(current_user: User = Depends(require_role("faculty", "hod", "super_admin")), db: Session = Depends(get_db_sync)) -> User:
-        if current_user.role in ["hod", "super_admin"]:
+    def ownership_checker(current_user: User = Depends(require_role("faculty", "super_admin")), db: Session = Depends(get_db_sync)) -> User:
+        if current_user.role in ["super_admin"]:
             return current_user
             
         from models.faculty_subject_assignment import FacultySubjectAssignment
@@ -187,5 +187,5 @@ def require_role_async(*roles: str):
     return role_checker
 
 
-def require_hod_or_admin_async(current_user: User = Depends(require_role_async("super_admin", "hod"))) -> User:
+def require_hod_or_admin_async(current_user: User = Depends(require_role_async("super_admin", "faculty"))) -> User:
     return current_user

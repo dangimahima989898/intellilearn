@@ -82,6 +82,33 @@ async def upload_note(
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
         
+    # Faculty ownership validation
+    if current_user.role == "faculty":
+        from models.faculty_subject_assignment import FacultySubjectAssignment
+        assignment = db.query(FacultySubjectAssignment).filter(
+            FacultySubjectAssignment.faculty_id == current_user.id,
+            FacultySubjectAssignment.subject_id == subject_id
+        ).first()
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. You are not assigned to this subject."
+            )
+
+    # Enforce course_id and semester_number match subject metadata
+    if course_id and course_id != subject.course_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cross-semester/cross-course uploads are not allowed. Selected course does not match subject."
+        )
+    if semester_number and semester_number != subject.semester_number:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cross-semester/cross-course uploads are not allowed. Selected semester does not match subject."
+        )
+    
+    course_id = subject.course_id
+    semester_number = subject.semester_number
     safe_name = secure_filename(file.filename)
     unique_filename = f"{uuid.uuid4()}_{safe_name}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
@@ -131,15 +158,21 @@ def get_notes(
         query = query.filter(Subject.is_archived == False)
               
     if current_user.role == "student":
-        query = apply_semester_filter(query, Note, current_user)
+        if subject_id:
+            # When fetching notes for a specific subject, just filter by subject.
+            # The subject is already verified to belong to the student's semester
+            # via the /subjects endpoint, so no extra course/semester filter needed.
+            query = query.filter(Note.subject_id == subject_id)
+        else:
+            # Browsing all notes — apply semester filter so students only see their semester
+            query = apply_semester_filter(query, Note, current_user)
     else:
         if course_id:
             query = query.filter(Note.course_id == course_id)
         if semester:
             query = query.filter(Note.semester_number == semester)
-
-    if subject_id:
-        query = query.filter(Note.subject_id == subject_id)
+        if subject_id:
+            query = query.filter(Note.subject_id == subject_id)
         
     results = query.all()
     
@@ -147,6 +180,7 @@ def get_notes(
         serialize_note(note, subject_name, uploaded_by_name)
         for note, subject_name, uploaded_by_name in results
     ]
+
 
 @router.get("/draft-summaries")
 def get_draft_summaries(
@@ -418,6 +452,19 @@ async def upload_summary_note(
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
 
+    # Faculty ownership validation
+    if current_user.role == "faculty":
+        from models.faculty_subject_assignment import FacultySubjectAssignment
+        assignment = db.query(FacultySubjectAssignment).filter(
+            FacultySubjectAssignment.faculty_id == current_user.id,
+            FacultySubjectAssignment.subject_id == subject_id
+        ).first()
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. You are not assigned to this subject."
+            )
+
     response_notes = []
     
     for file in files:
@@ -489,6 +536,19 @@ def approve_summary(
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not found")
         
+    # Faculty ownership validation
+    if current_user.role == "faculty":
+        from models.faculty_subject_assignment import FacultySubjectAssignment
+        assignment = db.query(FacultySubjectAssignment).filter(
+            FacultySubjectAssignment.faculty_id == current_user.id,
+            FacultySubjectAssignment.subject_id == summary.note.subject_id
+        ).first()
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. You are not assigned to this subject."
+            )
+
     latest_version = db.query(SummaryVersion)\
         .filter(SummaryVersion.summary_id == summary_id)\
         .order_by(SummaryVersion.version_number.desc()).first()
@@ -552,6 +612,19 @@ def reject_summary(
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not found")
         
+    # Faculty ownership validation
+    if current_user.role == "faculty":
+        from models.faculty_subject_assignment import FacultySubjectAssignment
+        assignment = db.query(FacultySubjectAssignment).filter(
+            FacultySubjectAssignment.faculty_id == current_user.id,
+            FacultySubjectAssignment.subject_id == summary.note.subject_id
+        ).first()
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. You are not assigned to this subject."
+            )
+
     summary.status = "REJECTED"
     summary.rejection_comment = payload.reason
     db.add(summary)

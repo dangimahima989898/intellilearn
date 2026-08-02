@@ -186,7 +186,11 @@ export default function HODScheduleManager() {
       const eventsData = eventsRes.status === 'fulfilled' ? (eventsRes.value || []) : []
       const facultyData = facultyRes.status === 'fulfilled' ? (facultyRes.value.data || []) : []
 
-      const mappedSlots = slotsData.map(s => ({ ...s, day_of_week: s.day || s.day_of_week }))
+      const mappedSlots = slotsData.map(s => ({
+        ...s,
+        day_of_week: s.day || s.day_of_week,
+        semester_number: s.semester_number || s.semester
+      }))
       setSlots(mappedSlots)
       setEvents(eventsData)
       setFacultyList(facultyData)
@@ -211,17 +215,43 @@ export default function HODScheduleManager() {
         const s1 = slots[i]; const s2 = slots[j]
         if (s1.day_of_week !== s2.day_of_week) continue
         if (!isOverlapping(s1.start_time, s1.end_time, s2.start_time, s2.end_time)) continue
+        // Check date overlap (one-time vs weekly/recurring, or same date one-time)
+        const dateOverlaps = !s1.date || !s2.date || s1.date === s2.date
+        if (!dateOverlaps) continue
+
         const key = [s1.id, s2.id].sort().join('-')
         if (processed.has(key)) continue
         processed.add(key)
-        if (s1.faculty_id && s2.faculty_id && s1.faculty_id === s2.faculty_id) {
-          list.push({ type: 'faculty', message: `👨‍🏫 ${s1.faculty_name || 'Faculty'} double-booked: "${s1.subject_name}" & "${s2.subject_name}" on ${s1.day_of_week} ${s1.start_time}–${s1.end_time}` })
+         if (s1.faculty_id && s2.faculty_id && s1.faculty_id === s2.faculty_id) {
+          list.push({
+            type: 'faculty',
+            message: `👨‍🏫 ${s1.faculty_name || 'Faculty'} double-booked: "${s1.subject_name}" & "${s2.subject_name}" on ${s1.day_of_week} ${s1.start_time}–${s1.end_time}`,
+            slot1: s1,
+            slot2: s2
+          })
         }
-        if (s1.room && s2.room && s1.room.trim().toLowerCase() === s2.room.trim().toLowerCase()) {
-          list.push({ type: 'room', message: `🏫 Room "${s1.room}" double-booked: "${s1.subject_name}" & "${s2.subject_name}" on ${s1.day_of_week}` })
+        if (s1.room && s2.room && s1.room.trim().toLowerCase() === s2.room.trim().toLowerCase() && s1.room.trim().toLowerCase() !== 'tbd') {
+          list.push({
+            type: 'room',
+            message: `🏫 Room "${s1.room}" double-booked: "${s1.subject_name}" & "${s2.subject_name}" on ${s1.day_of_week}`,
+            slot1: s1,
+            slot2: s2
+          })
         }
-        if (s1.course_id === s2.course_id && s1.semester_number === s2.semester_number) {
-          list.push({ type: 'semester', message: `📚 Sem ${s1.semester_number} students have two simultaneous classes on ${s1.day_of_week}: "${s1.subject_name}" & "${s2.subject_name}"` })
+        if (s1.course_id && s1.semester_number && s1.course_id === s2.course_id && s1.semester_number === s2.semester_number) {
+          // If either class is an Elective, they are allowed to run in parallel
+          if (s1.subject_type === 'Elective' || s2.subject_type === 'Elective') {
+            continue
+          }
+          // Only conflict if they are in the same section, or at least one is "all sections" (falsy)
+          if (!s1.section || !s2.section || s1.section === s2.section) {
+            list.push({
+              type: 'semester',
+              message: `📚 Sem ${s1.semester_number}${s1.section ? ` Sec ${s1.section}` : ''} students have two simultaneous classes on ${s1.day_of_week}: "${s1.subject_name}" & "${s2.subject_name}". (Note: If these are parallel electives, please change their Subject Type to 'Elective' in the Subjects Page to allow parallel scheduling).`,
+              slot1: s1,
+              slot2: s2
+            })
+          }
         }
       }
     }
@@ -895,14 +925,30 @@ export default function HODScheduleManager() {
               </button>
             </div>
             <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {allConflicts.map((conf, idx) => (
-                <div key={idx} style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: 10, padding: '10px 12px' }}>
-                  <span style={{ display: 'inline-block', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', background: '#FECDD3', color: '#9F1239', borderRadius: 4, padding: '2px 6px', marginBottom: 4 }}>
-                    {conf.type} conflict
-                  </span>
-                  <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#BE123C', lineHeight: 1.5 }}>{conf.message}</p>
-                </div>
-              ))}
+              {allConflicts.map((conf, idx) => {
+                const handleConflictClick = () => {
+                  if (conf.slot1) {
+                    setConflictModalOpen(false)
+                    setEditingSlot(conf.slot1)
+                    setClassModalOpen(true)
+                  }
+                };
+                return (
+                  <div key={idx} onClick={handleConflictClick}
+                    style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: 10, padding: '10px 12px', cursor: 'pointer', transition: 'all 0.1s ease-in-out' }}
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#FFE4E6'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#FFF1F2'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                  >
+                    <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ display: 'inline-block', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', background: '#FECDD3', color: '#9F1239', borderRadius: 4, padding: '2px 6px' }}>
+                        {conf.type} conflict
+                      </span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: '#BE123C', textDecoration: 'underline' }}>Click to edit/resolve</span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#BE123C', lineHeight: 1.5 }}>{conf.message}</p>
+                  </div>
+                );
+              })}
             </div>
             <button onClick={() => setConflictModalOpen(false)} style={{ marginTop: 16, width: '100%', padding: '10px 0', background: '#F3F4F6', color: '#374151', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               Close

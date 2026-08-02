@@ -4,7 +4,7 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
-# We set VITE_API_URL to empty so frontend requests use relative paths to the same domain/port
+# Set VITE_API_URL to empty so frontend uses relative paths (same domain/port)
 ENV VITE_API_URL=""
 RUN npm run build
 
@@ -12,9 +12,12 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies required by psycopg2-binary and sentence-transformers
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    gcc \
+    libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python requirements
@@ -26,6 +29,9 @@ COPY backend/ ./
 
 # Copy built frontend static files from Stage 1 into the backend's directory
 COPY --from=frontend-builder /app/frontend/dist ./dist
+
+# Create uploads directory and ensure it's writable
+RUN mkdir -p /app/uploads && chmod 777 /app/uploads
 
 # Hugging Face Spaces require application to listen on port 7860
 EXPOSE 7860

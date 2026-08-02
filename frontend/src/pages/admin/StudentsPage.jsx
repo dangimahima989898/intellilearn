@@ -58,6 +58,39 @@ export default function StudentsPage() {
   const [correctionModalStudent, setCorrectionModalStudent] = useState(null)
   const [correctionForm, setCorrectionForm] = useState({ department: '', semester: '1' })
 
+  // Advance Semester Modal States
+  const [advanceModalOpen, setAdvanceModalOpen] = useState(false)
+  const [advanceCourseId, setAdvanceCourseId] = useState('')
+  const [advanceFromSemester, setAdvanceFromSemester] = useState('')
+  const [advanceToSemester, setAdvanceToSemester] = useState('')
+  const [advancing, setAdvancing] = useState(false)
+
+  const handleAdvanceCohortSubmit = async (e) => {
+    e.preventDefault()
+    if (!advanceCourseId || !advanceFromSemester || !advanceToSemester) {
+      toast.error("Please fill in all fields")
+      return
+    }
+    setAdvancing(true)
+    try {
+      const res = await adminService.advanceSemester(
+        advanceCourseId,
+        parseInt(advanceFromSemester),
+        parseInt(advanceToSemester)
+      )
+      toast.success(res.message || "Students advanced successfully!")
+      setAdvanceModalOpen(false)
+      setAdvanceCourseId('')
+      setAdvanceFromSemester('')
+      setAdvanceToSemester('')
+      loadData() // Refresh student list
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to advance cohort")
+    } finally {
+      setAdvancing(false)
+    }
+  }
+
   const [reminderStudent, setReminderStudent] = useState(null)
 
   const loadData = async () => {
@@ -631,8 +664,6 @@ export default function StudentsPage() {
           <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">MCA: {statsBar.mca}</span>
           <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">BSc CS: {statsBar.bsc}</span>
           <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">MSc IT: {statsBar.msc}</span>
-          <span className="bg-amber-500/10 text-amber-600 px-2.5 py-1 rounded-lg">Pending: {statsBar.pending}</span>
-          <span className="bg-rose-500/10 text-rose-600 px-2.5 py-1 rounded-lg">Deactivated: {statsBar.deactivated}</span>
         </div>
       </div>
     )
@@ -655,6 +686,15 @@ export default function StudentsPage() {
                 View and manage student registrations, approvals, and academic status across all departments
               </p>
             </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => setAdvanceModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                Advance Cohort / Semester
+              </button>
+            </div>
           </div>
 
           {/* Stats Bar */}
@@ -672,20 +712,6 @@ export default function StudentsPage() {
               All Students
             </button>
             
-            <button
-              onClick={() => setActiveTab('pending')}
-              className={`px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer ${
-                activeTab === 'pending' ? 'bg-[#7C3AED] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              Pending Approvals
-              {pendingStudents.length > 0 && (
-                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${activeTab === 'pending' ? 'bg-white text-[#7C3AED]' : 'bg-[#7C3AED]/20 text-[#7C3AED]'}`}>
-                  {pendingStudents.length}
-                </span>
-              )}
-            </button>
 
             <button
               onClick={() => setActiveTab('risk')}
@@ -702,15 +728,6 @@ export default function StudentsPage() {
               )}
             </button>
 
-            <button
-              onClick={() => setActiveTab('deactivated')}
-              className={`px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer ${
-                activeTab === 'deactivated' ? 'bg-[#7C3AED] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              <UserX className="w-4 h-4" />
-              Deactivated Students
-            </button>
           </div>
 
           {/* FILTER CONTROLS */}
@@ -1024,6 +1041,97 @@ export default function StudentsPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADVANCE SEMESTER / COHORT MODAL */}
+      {advanceModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white border border-slate-100 rounded-3xl w-full max-w-md overflow-hidden flex flex-col shadow-xl text-slate-800 animate-fade-in">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <Sparkles className="w-4.5 h-4.5 text-[#7C3AED]" />
+                Advance Semester (Cohort Transfer)
+              </h2>
+              <button onClick={() => setAdvanceModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition p-1 hover:bg-slate-50 rounded-lg cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAdvanceCohortSubmit}>
+              <div className="p-6 flex flex-col gap-4">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Bulk transfer all students in a specific course from one semester to another. This updates the academic cohort records across the registry.
+                </p>
+
+                {/* Course Select */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Course / Program *</label>
+                  <select
+                    required
+                    value={advanceCourseId}
+                    onChange={e => setAdvanceCourseId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-2 text-xs font-semibold focus:outline-none focus:border-[#7C3AED] text-slate-700 cursor-pointer"
+                  >
+                    <option value="">Select Course...</option>
+                    {courses.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* From Semester */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">From Semester *</label>
+                    <select
+                      required
+                      value={advanceFromSemester}
+                      onChange={e => setAdvanceFromSemester(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-2 text-xs font-semibold focus:outline-none focus:border-[#7C3AED] text-slate-700 cursor-pointer"
+                    >
+                      <option value="">Select...</option>
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                        <option key={s} value={s}>Semester {s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* To Semester */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">To Semester *</label>
+                    <select
+                      required
+                      value={advanceToSemester}
+                      onChange={e => setAdvanceToSemester(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-2 text-xs font-semibold focus:outline-none focus:border-[#7C3AED] text-slate-700 cursor-pointer"
+                    >
+                      <option value="">Select...</option>
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                        <option key={s} value={s}>Semester {s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 p-6 bg-slate-50 border-t border-slate-100">
+                <button 
+                  type="button"
+                  onClick={() => setAdvanceModalOpen(false)}
+                  className="px-3.5 py-2 text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={advancing}
+                  className="px-4 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-50 text-white font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  {advancing ? "Advancing..." : "Advance Cohort"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1350,12 +1458,6 @@ function AtRiskStudentsTab({ students, onView, onSendReminder, onInformFaculty }
 
                 <td className="p-5 text-right whitespace-nowrap">
                   <div className="flex justify-end gap-1.5">
-                    <button
-                      onClick={() => onInformFaculty(student.name)}
-                      className="px-2.5 py-1.5 border border-indigo-100 bg-indigo-50/50 hover:bg-[#7C3AED]/5 text-[#7C3AED] rounded-xl text-[10px] font-bold transition cursor-pointer"
-                    >
-                      Inform Faculty
-                    </button>
                     <button
                       onClick={() => onSendReminder(student)}
                       className="px-2.5 py-1.5 border border-amber-100 bg-amber-50 hover:bg-[#F59E0B] text-[#F59E0B] hover:text-white rounded-xl text-[10px] font-bold transition cursor-pointer"

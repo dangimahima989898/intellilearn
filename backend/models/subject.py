@@ -58,16 +58,20 @@ class Subject(Base):
         lazy="dynamic"
     )
 
+    topics = relationship("Topic", back_populates="subject", cascade="all, delete-orphan")
+
     # ── Helpers ────────────────────────────────────────────────────────────────
     def get_topics(self) -> list[str]:
-        """Return topics_list decoded from JSON, or empty list."""
-        if not self.topics_list:
+        """Return topic names from topics relationship, or empty list."""
+        if not self.topics:
             return []
-        try:
-            return json.loads(self.topics_list)
-        except Exception:
-            return []
+        return [t.name for t in self.topics]
 
     def set_topics(self, topics: list[str]):
-        """JSON-encode and store topics list."""
-        self.topics_list = json.dumps(topics) if topics else None
+        """Populate topics relationship with new Topic instances."""
+        from models.topic import Topic
+        self.topics = [
+            Topic(name=name, subject_id=self.id, semester_id=self.semester_id)
+            for name in topics
+        ] if topics else []
+

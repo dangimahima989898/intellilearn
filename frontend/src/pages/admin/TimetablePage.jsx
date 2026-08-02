@@ -52,7 +52,7 @@ export default function TimetablePage() {
       const [slotsRes, subjectsRes, facultyRes] = await Promise.allSettled([
         adminService.getTimetable(courseId || null, semester || null),
         adminService.getSubjects(),
-        api.get('/api/v1/hod/faculty')
+        api.get('/api/v1/hod/faculty/all')
       ])
       setSlots(slotsRes.status === 'fulfilled' ? (slotsRes.value || []) : [])
       setSubjects(subjectsRes.status === 'fulfilled' ? (subjectsRes.value || []) : [])

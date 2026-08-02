@@ -45,6 +45,7 @@ const HODContentModeration = lazy(() => import("./pages/admin/HODContentModerati
 const FacultyLeavePage = lazy(() => import("./pages/admin/FacultyLeavePage"))
 const FacultySchedulePage = lazy(() => import("./pages/admin/FacultySchedulePage"))
 const AIAnswerReview = lazy(() => import("./pages/admin/AIAnswerReview"))
+const FacultyTopicsPage = lazy(() => import("./pages/admin/FacultyTopicsPage"))
 
 // Student Pages
 const StudentLayout = lazy(() => import("./pages/student/StudentLayout"))
@@ -103,7 +104,7 @@ function AppContent() {
   }, [])
 
   const DynamicDashboard = () => {
-    if (user?.role === 'hod' || user?.role === 'super_admin') return <HodDashboard />
+    if (user?.role === 'super_admin') return <HodDashboard />
     if (user?.role === 'faculty') return <FacultyDashboard />
     return <AdminDashboard />
   }
@@ -198,6 +199,7 @@ function AppContent() {
         {/* Other Pages */}
         <Route path="students" element={<StudentsPage />} />
         <Route path="students/upload" element={<UploadStudentsPage />} />
+        <Route path="pending-requests" element={<PendingRequestsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="archive" element={<HODArchive />} />
         <Route path="quiz-analytics" element={<HODDepartmentAnalytics />} />
@@ -215,6 +217,7 @@ function AppContent() {
         <Route path="ai-answer-review" element={<AIAnswerReview />} />
         <Route path="apply-leave" element={<FacultyLeavePage />} />
         <Route path="leave-status" element={<FacultyLeavePage />} />
+        <Route path="topics" element={<FacultyTopicsPage />} />
         <Route path="tests/create" element={<AdminTestCreator />} />
       </Route>
 

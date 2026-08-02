@@ -316,23 +316,31 @@ export default function PerformanceHeatmap({ deptFilter }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.map((row, i) => {
-                          const avg = calcAvg(row)
-                          return (
-                            <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02] transition">
-                              <td className="px-5 py-2 text-xs font-semibold text-white/80 max-w-[160px] truncate">{row.subject}</td>
-                              {UNITS.map(u => (
-                                <HeatCell key={u} value={row[u]} subject={row.subject} unit={`Unit ${u.slice(1)}`} dept={dept} onClickCell={setDrillCell} />
-                              ))}
-                              {/* AVG column */}
-                              <td className="px-2 py-2 text-center">
-                                <div className="mx-auto w-14 py-1.5 rounded-lg bg-violet-500/20 border border-violet-500/30 text-xs font-black text-violet-300">
-                                  {avg != null ? `${avg}%` : '—'}
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
+                        {rows.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-5 py-8 text-center text-white/30 text-xs italic">
+                              No subject performance data available for this department.
+                            </td>
+                          </tr>
+                        ) : (
+                          rows.map((row, i) => {
+                            const avg = calcAvg(row)
+                            return (
+                              <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02] transition">
+                                <td className="px-5 py-2 text-xs font-semibold text-white/80 max-w-[160px] truncate">{row.subject}</td>
+                                {UNITS.map(u => (
+                                  <HeatCell key={u} value={row[u]} subject={row.subject} unit={`Unit ${u.slice(1)}`} dept={dept} onClickCell={setDrillCell} />
+                                ))}
+                                {/* AVG column */}
+                                <td className="px-2 py-2 text-center">
+                                  <div className="mx-auto w-14 py-1.5 rounded-lg bg-violet-500/20 border border-violet-500/30 text-xs font-black text-violet-300">
+                                    {avg != null ? `${avg}%` : '—'}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })
+                        )}
                       </tbody>
                     </table>
                   </div>

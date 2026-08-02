@@ -98,7 +98,7 @@ const CircularTimer = ({ seconds, total = 30 }) => {
   );
 };
 
-const ScoreRing = ({ score }) => {
+const ScoreRing = ({ score, isLight }) => {
   const radius = 45;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
@@ -131,13 +131,13 @@ const ScoreRing = ({ score }) => {
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="text-3xl font-outfit font-black text-white">{Math.round(score)}%</span>
+        <span className={`text-3xl font-outfit font-black ${isLight ? 'text-slate-800' : 'text-white'}`}>{Math.round(score)}%</span>
       </div>
     </div>
   );
 };
 
-const ReadinessArc = ({ score, label }) => {
+const ReadinessArc = ({ score, label, isLight }) => {
   const percentage = score;
   const radius = 50;
   const circumference = Math.PI * radius; // Semicircle
@@ -149,12 +149,12 @@ const ReadinessArc = ({ score, label }) => {
   else if (score >= 50) color = "#f59e0b";
 
   return (
-    <div className="flex flex-col items-center justify-center p-4">
-      <div className="relative w-40 h-24 flex items-end justify-center overflow-hidden">
-        <svg className="w-36 h-36 absolute -bottom-1">
+    <div className="flex flex-col items-center justify-center p-2">
+      <div className="relative w-40 h-20 flex items-end justify-center overflow-hidden">
+        <svg className="w-36 h-36 absolute -bottom-1" viewBox="0 0 136 136">
           {/* Background semicircular track */}
           <path
-            d="M 18 68 A 50 50 0 0 1 118 68"
+            d="M 18 80 A 50 50 0 0 1 118 80"
             fill="none"
             stroke="rgba(128,128,128,0.15)"
             strokeWidth="10"
@@ -162,7 +162,7 @@ const ReadinessArc = ({ score, label }) => {
           />
           {/* Active colored semicircular track */}
           <path
-            d="M 18 68 A 50 50 0 0 1 118 68"
+            d="M 18 80 A 50 50 0 0 1 118 80"
             fill="none"
             stroke={color}
             strokeWidth="10"
@@ -172,9 +172,9 @@ const ReadinessArc = ({ score, label }) => {
             style={{ transition: "stroke-dashoffset 1s ease-out" }}
           />
         </svg>
-        <div className="flex flex-col items-center z-10">
-          <span className="text-2xl font-outfit font-black text-white">{Math.round(score)}%</span>
-          <span className="text-[9px] uppercase font-bold text-white/50 tracking-wider mt-0.5">{label}</span>
+        <div className="flex flex-col items-center z-10 pb-1">
+          <span className={`text-2xl font-outfit font-black ${isLight ? 'text-slate-800' : 'text-white'}`}>{Math.round(score)}%</span>
+          <span className={`text-[9px] uppercase font-black tracking-wider mt-0.5 ${isLight ? 'text-slate-500' : 'text-white/50'}`}>{label}</span>
         </div>
       </div>
     </div>
@@ -194,6 +194,8 @@ export default function AdaptiveQuizPage() {
   
   // Setup State
   const [selectedSubject, setSelectedSubject] = useState(null);
+  const [numQuestions, setNumQuestions] = useState(null);
+  const [totalQuestions, setTotalQuestions] = useState(10);
   // topic is always 'mixed' for Adaptive Quiz — AI selects topics automatically
   
   // Quiz State
@@ -251,17 +253,24 @@ export default function AdaptiveQuizPage() {
     }
   }, [location.state, subjects]);
 
+  const QUIZ_TIMER_SECONDS = 30;
+
   const startQuiz = async () => {
     if (!selectedSubject) {
       toast.error("Please select a subject");
       return;
     }
+    if (!numQuestions) {
+      toast.error("Please select the number of questions");
+      return;
+    }
     setLoading(true);
     try {
       // Adaptive Quiz always uses 'mixed' — the AI engine selects topics based on student history
-      const session = await quizService.startQuiz(selectedSubject.id, "mixed");
+      const session = await quizService.startQuiz(selectedSubject.id, "mixed", numQuestions);
       setAttemptId(session.attempt_id);
       setQuizDetails(session);
+      setTotalQuestions(numQuestions);
       
       // Reset quiz session states
       setCurrentIdx(0);
@@ -279,9 +288,8 @@ export default function AdaptiveQuizPage() {
         return;
       }
       setCurrentQuestion(firstQ);
-      setTimeLeft(firstQ.estimated_time_seconds || 30);
       setScreen("quiz");
-      startTimer(firstQ.estimated_time_seconds || 30);
+      startTimer();
     } catch (err) {
       toast.error("Failed to initialize adaptive quiz. Try again.");
     } finally {
@@ -289,14 +297,20 @@ export default function AdaptiveQuizPage() {
     }
   };
 
-  const startTimer = (duration = 30) => {
+  // Ref so the timer closure always calls the latest handleAnswerSubmit (avoids stale state)
+  const handleAnswerSubmitRef = useRef(null);
+  // Separate submitting ref — avoids blocking on shared `loading` state
+  const isSubmittingRef = useRef(false);
+
+  const startTimer = () => {
     clearInterval(timerRef.current);
-    setTimeLeft(duration);
+    setTimeLeft(30);
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
           clearInterval(timerRef.current);
-          handleAnswerSubmit(null);
+          // Use a ref-based call to avoid stale closure issues
+          handleAnswerSubmitRef.current("timeout");
           return 0;
         }
         return prev - 1;
@@ -304,126 +318,121 @@ export default function AdaptiveQuizPage() {
     }, 1000);
   };
 
-  const handleAnswerSubmit = async (ans) => {
-    if (isLocked) return;
+  const handleAnswerSubmit = async (overrideAnswer = null) => {
+    const isTimeout = overrideAnswer === "timeout";
+    const answerToSubmit = isTimeout ? (selectedAnswer || "unanswered") : selectedAnswer;
     
-    const finalAns = ans || selectedAnswer;
-    setIsLocked(true);
+    if (!answerToSubmit && !isTimeout) return;
+    // Prevent double-submits using a ref (not blocking on shared loading state)
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    
     clearInterval(timerRef.current);
+    setLoading(true);
+    // timeTaken = how many seconds the student actually used (full 30 if timed out)
+    const timeTaken = isTimeout ? 30 : (30 - timeLeft);
 
-    const timeTaken = (currentQuestion.estimated_time_seconds || 30) - timeLeft;
+    // Capture current idx synchronously before any async work
+    const capturedIdx = currentIdx;
+    const capturedTotal = totalQuestions;
+    const capturedAttemptId = attemptId;
+    const capturedQuestion = currentQuestion;
 
     try {
       const res = await quizService.submitAnswer(
-        attemptId,
-        currentQuestion.id,
-        finalAns || "",
-        timeTaken
+        capturedAttemptId,
+        capturedQuestion.id,
+        answerToSubmit,
+        timeTaken,
+        10000  // 10s timeout — fail fast instead of hanging 45s
       );
-      setFeedback(res);
       setHistoryOfAnswers(prev => [...prev, res.is_correct]);
+
+      // Save question review data
+      setReviewQuestions(prev => [...prev, {
+        id: capturedQuestion.id,
+        question_text: capturedQuestion.question_text,
+        option_a: capturedQuestion.option_a,
+        option_b: capturedQuestion.option_b,
+        option_c: capturedQuestion.option_c,
+        option_d: capturedQuestion.option_d,
+        selected_answer: answerToSubmit,
+        correct_answer: res.correct_answer,
+        explanation: res.explanation,
+        is_correct: res.is_correct
+      }]);
       
-      // Append to review questions directly on successful submission
-      setReviewQuestions(prev => {
-        if (prev.find(x => x.id === currentQuestion.id)) return prev;
-        return [...prev, {
-          id: currentQuestion.id,
-          question_text: currentQuestion.question_text,
-          option_a: currentQuestion.option_a,
-          option_b: currentQuestion.option_b,
-          option_c: currentQuestion.option_c,
-          option_d: currentQuestion.option_d,
-          selected_answer: finalAns,
-          correct_answer: res.correct_answer,
-          explanation: res.explanation,
-          is_correct: res.is_correct
-        }];
-      });
-
-      if (res.is_correct) {
-        toast.success("Correct Answer!");
-      } else {
-        toast.error("Incorrect Answer.");
-      }
-    } catch (err) {
-      toast.error("Failed to submit answer");
-      setIsLocked(false);
-    }
-  };
-
-  const triggerDeepExplanation = async () => {
-    if (!currentQuestion) return;
-    setLoadingExplain(true);
-    try {
-      const res = await quizService.getExplanation(currentQuestion.id, selectedAnswer || "");
-      setDeepExplanation(res.explanation);
-    } catch (err) {
-      toast.error("Failed to generate AI Explanation.");
-    } finally {
-      setLoadingExplain(false);
-    }
-  };
-
-  const nextQuestion = async () => {
-    const nextIdx = currentIdx + 1;
-    
-    // Check for mid-quiz checkpoint at 5 questions answered
-    if (nextIdx === 5 && !showCheckpoint && historyOfAnswers.length === 5) {
-      const correctSoFar = historyOfAnswers.filter(Boolean).length;
-      const accuracy = (correctSoFar / 5) * 100;
-      
-      let nextAction = "Continue challenging yourself on higher difficulties.";
-      if (accuracy < 60) {
-        nextAction = "Read concepts carefully before attempting. Consider taking easier questions.";
-      }
-      
-      setCheckpointStats({
-        correct: correctSoFar,
-        accuracy: accuracy,
-        next_difficulty: feedback?.next_difficulty || "medium",
-        action: nextAction
-      });
-      setShowCheckpoint(true);
-      return;
-    }
-
-    // Instantly clear locks, feedback, and selected options to avoid displaying previous data
-    setSelectedAnswer(null);
-    setIsLocked(false);
-    setFeedback(null);
-    setDeepExplanation("");
-
-    if (nextIdx < 10) {
-      setLoading(true);
-      try {
-        const nextQ = await quizService.getNextQuestion(attemptId);
+      const nextIdx = capturedIdx + 1;
+      if (nextIdx < capturedTotal) {
+        const nextQ = await quizService.getNextQuestion(capturedAttemptId);
         if (!nextQ) {
-          // No more questions returned, finish early
-          finishQuiz();
+          await finishQuiz();
           return;
         }
+        setSelectedAnswer(null);
         setCurrentQuestion(nextQ);
         setCurrentIdx(nextIdx);
-        startTimer(nextQ.estimated_time_seconds || 30);
-      } catch (err) {
-        toast.error("Error fetching next question.");
-      } finally {
-        setLoading(false);
+        startTimer();
+      } else {
+        await finishQuiz();
       }
-    } else {
-      finishQuiz();
+    } catch (err) {
+      toast.error(isTimeout ? "Time out! Moving to next question." : "Failed to submit answer. Skipping to next question.");
+      setHistoryOfAnswers(prev => [...prev, false]);
+
+      // Save failed/timed-out review data
+      setReviewQuestions(prev => [...prev, {
+        id: capturedQuestion.id,
+        question_text: capturedQuestion.question_text,
+        option_a: capturedQuestion.option_a,
+        option_b: capturedQuestion.option_b,
+        option_c: capturedQuestion.option_c,
+        option_d: capturedQuestion.option_d,
+        selected_answer: answerToSubmit,
+        correct_answer: null,
+        explanation: null,
+        is_correct: false
+      }]);
+      
+      const nextIdx = capturedIdx + 1;
+      if (nextIdx < capturedTotal) {
+        try {
+          const nextQ = await quizService.getNextQuestion(capturedAttemptId);
+          if (nextQ) {
+            setSelectedAnswer(null);
+            setCurrentQuestion(nextQ);
+            setCurrentIdx(nextIdx);
+            startTimer();
+          } else {
+            await finishQuiz();
+          }
+        } catch (nextErr) {
+          toast.error("Could not fetch next question. Ending quiz.");
+          await finishQuiz();
+        }
+      } else {
+        await finishQuiz();
+      }
+    } finally {
+      isSubmittingRef.current = false;
+      setLoading(false);
     }
   };
 
-  const skipQuestion = () => {
-    handleAnswerSubmit("");
-  };
+  // Keep the ref in sync with the latest handleAnswerSubmit
+  useEffect(() => {
+    handleAnswerSubmitRef.current = handleAnswerSubmit;
+  });
 
   const finishQuiz = async () => {
+    clearInterval(timerRef.current);
     setLoading(true);
     try {
       const report = await quizService.getReport(attemptId);
       setResults(report);
+      if (report.questions_review) {
+        setReviewQuestions(report.questions_review);
+      }
       setScreen("results");
       loadInitialData();
     } catch (err) {
@@ -486,6 +495,7 @@ export default function AdaptiveQuizPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {subjects.map((sub) => {
                   const isSel = selectedSubject?.id === sub.id;
+                  const hasMaterials = sub.notes_count > 0 || sub.chunks_count > 0;
                   return (
                     <button
                       key={sub.id}
@@ -496,8 +506,15 @@ export default function AdaptiveQuizPage() {
                           : isLight ? "bg-white border-slate-200 hover:border-[#7C3AED]/40 hover:bg-[#F5F3FF]/10" : "bg-white/5 border-white/10 hover:border-white/20"
                       }`}
                     >
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[#7C3AED] mb-2 shrink-0 bg-[#F5F3FF]">
-                        <BookOpen className="w-4 h-4" />
+                      <div className="flex justify-between items-start w-full mb-1">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[#7C3AED] shrink-0 bg-[#F5F3FF]">
+                          <BookOpen className="w-4 h-4" />
+                        </div>
+                        {!hasMaterials && (
+                          <span className="text-[8px] font-black bg-rose-500/10 text-rose-500 border border-rose-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0" title={`Notes: ${sub.notes_count || 0}, Chunks: ${sub.chunks_count || 0}, Topics: ${sub.topics_list?.length || 0}`}>
+                            Missing Content
+                          </span>
+                        )}
                       </div>
                       <div>
                         <p className={`text-[9px] font-bold uppercase tracking-widest leading-none mb-1 text-[#7C3AED]`}>{sub.code}</p>
@@ -507,6 +524,39 @@ export default function AdaptiveQuizPage() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Number of Questions Selector */}
+            <div className={`border rounded-2xl p-6 space-y-4 ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+              <div className="flex items-center justify-between">
+                <h3 className={`text-sm font-black flex items-center gap-2 uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-white'}`}>
+                  <Target className="w-4 h-4 text-[#6366F1]" />
+                  Number of Questions
+                </h3>
+                {!numQuestions && (
+                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20">Required</span>
+                )}
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {[5, 10, 15, 20, 30].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setNumQuestions(n)}
+                    className={`py-3 rounded-xl border text-sm font-black transition-all cursor-pointer ${
+                      numQuestions === n
+                        ? "border-2 border-[#7C3AED] bg-[#F5F3FF]/50 text-[#7C3AED] scale-[1.04] shadow-md shadow-[#7C3AED]/10"
+                        : isLight
+                        ? "bg-white border-slate-200 text-slate-700 hover:border-[#7C3AED]/40 hover:bg-[#F5F3FF]/10"
+                        : "bg-white/5 border-white/10 text-white/70 hover:border-white/20"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <p className={`text-[11px] font-semibold ${isLight ? 'text-slate-400' : 'text-white/30'}`}>
+                Timer: 30 seconds per question &bull; All questions adaptive
+              </p>
             </div>
 
             {/* AI Mode Indicator - replaces manual Focus Topic */}
@@ -568,14 +618,48 @@ export default function AdaptiveQuizPage() {
               </div>
             </div>
 
-            <button
-              onClick={startQuiz}
-              disabled={loading || !selectedSubject}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#6366F1] to-[#7C3AED] hover:opacity-95 text-white font-extrabold text-sm shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:grayscale cursor-pointer flex items-center justify-center gap-2"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>{loading ? "Generating Adaptive Session..." : "Start Adaptive Quiz"}</span>
-            </button>
+            {(() => {
+              const selectedHasMaterials = selectedSubject && (selectedSubject.notes_count > 0 || selectedSubject.chunks_count > 0);
+              return (
+                <>
+                  {selectedSubject && !selectedHasMaterials && (
+                    <div className="p-3.5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-xs text-rose-500 font-semibold space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-rose-500">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>Syllabus Content Missing</span>
+                      </div>
+                      <p className="leading-normal">
+                        This subject does not have enough material to generate an adaptive quiz. Please ensure it has:
+                      </p>
+                      <ul className="list-disc pl-4 space-y-0.5 mt-1 text-[11px]">
+                        <li>Study notes uploaded ({selectedSubject.notes_count || 0})</li>
+                        <li>Topics configured ({selectedSubject.topics_list?.length || 0})</li>
+                        <li>Content chunks indexed ({selectedSubject.chunks_count || 0})</li>
+                      </ul>
+                    </div>
+                  )}
+                  <button
+                    onClick={startQuiz}
+                    disabled={loading || !selectedSubject || !selectedHasMaterials || !numQuestions}
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#6366F1] to-[#7C3AED] hover:opacity-95 text-white font-extrabold text-sm shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:grayscale cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>
+                      {loading 
+                        ? "Generating Adaptive Session..." 
+                        : !selectedSubject 
+                          ? "Select Academic Subject" 
+                          : !selectedHasMaterials 
+                            ? "Disabled: Content Missing" 
+                            : !numQuestions
+                              ? "Select Number of Questions"
+                              : "Start Adaptive Quiz"
+                      }
+                    </span>
+                  </button>
+                </>
+              );
+            })()}
             <button 
               onClick={() => setScreen("history")}
               className={`w-full py-3.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2 ${
@@ -610,9 +694,9 @@ export default function AdaptiveQuizPage() {
         {/* Quiz Top Bar */}
         <div className={`border rounded-2xl p-4 flex items-center justify-between shadow-xl ${isLight ? 'bg-white border-slate-200' : 'bg-[#1e293b]/50 border-white/10'}`}>
           <div className="flex items-center gap-3">
-            <CircularTimer seconds={timeLeft} total={currentQuestion.estimated_time_seconds || 30} />
+            <CircularTimer seconds={timeLeft} total={30} />
             <div>
-              <p className={`text-[10px] font-bold uppercase ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Question {currentIdx + 1} of 10</p>
+              <p className={`text-[10px] font-bold uppercase ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Question {currentIdx + 1} of {totalQuestions}</p>
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase border ${getDifficultyColor(currentDiff)}`}>
                   {currentDiff}
@@ -620,11 +704,7 @@ export default function AdaptiveQuizPage() {
                 <span className="text-[9px] text-violet-300 font-black uppercase bg-violet-500/20 px-2 py-0.5 rounded-full border border-violet-500/25">
                   {currentQuestion.subject_name}
                 </span>
-                {currentQuestion.unit && (
-                  <span className="text-[9px] text-amber-300 font-black uppercase bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/25">
-                    {currentQuestion.unit}
-                  </span>
-                )}
+                {/* Unit badge removed for overall syllabus mode */}
               </div>
             </div>
           </div>
@@ -640,7 +720,7 @@ export default function AdaptiveQuizPage() {
         <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
           <div 
             className="bg-violet-500 h-full transition-all duration-350"
-            style={{ width: `${((currentIdx + 1) / 10) * 100}%` }}
+            style={{ width: `${((currentIdx + 1) / totalQuestions) * 100}%` }}
           />
         </div>
 
@@ -663,30 +743,20 @@ export default function AdaptiveQuizPage() {
           <div className="grid grid-cols-1 gap-3">
             {options.map((opt) => {
               const isSelected = selectedAnswer === opt.key;
-              const isCorrectOpt = feedback?.correct_answer === opt.key;
               
               let borders = "bg-white/5 border-white/10 text-white/80 hover:border-violet-500/50 hover:bg-violet-500/5";
               if (isLight) {
                 borders = "bg-slate-50 border-slate-200 text-slate-700 hover:border-violet-500 hover:bg-violet-500/5";
               }
 
-              if (isLocked) {
-                if (isCorrectOpt) {
-                  borders = "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold shadow-lg shadow-emerald-500/10";
-                } else if (isSelected) {
-                  borders = "bg-rose-500/20 border-rose-500 text-rose-300 font-bold shadow-lg shadow-rose-500/10";
-                } else {
-                  borders = "opacity-40 grayscale border-white/5";
-                  if (isLight) borders = "opacity-40 grayscale border-slate-100";
-                }
-              } else if (isSelected) {
+              if (isSelected) {
                 borders = "bg-violet-500/15 border-violet-500 text-violet-300 font-semibold shadow-lg shadow-violet-500/10";
               }
 
               return (
                 <button
                   key={opt.key}
-                  disabled={isLocked}
+                  disabled={loading}
                   onClick={() => setSelectedAnswer(opt.key)}
                   className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${borders}`}
                 >
@@ -698,98 +768,23 @@ export default function AdaptiveQuizPage() {
                     </span>
                     <span className={isLight ? "text-slate-800" : "text-white"}>{opt.text}</span>
                   </div>
-                  {isLocked && isCorrectOpt && <Check className="w-5 h-5 text-emerald-400 shrink-0" />}
-                  {isLocked && isSelected && !isCorrectOpt && <X className="w-5 h-5 text-rose-400 shrink-0" />}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Feedback Overlay / Solution Drawer */}
-        {isLocked && feedback && (
-          <div className={`border rounded-2xl p-6 space-y-4 shadow-xl animate-fade-in ${
-            feedback.is_correct ? "bg-emerald-500/5 border-emerald-500/20" : "bg-rose-500/5 border-rose-500/20"
-          }`}>
-            <div className="flex items-center gap-2">
-              <span className={`p-1.5 rounded-lg ${feedback.is_correct ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}>
-                {feedback.is_correct ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
-              </span>
-              <h4 className={`text-md font-bold ${feedback.is_correct ? "text-emerald-400" : "text-rose-400"}`}>
-                {feedback.is_correct ? "Correct! Well Done." : "Incorrect Solution"}
-              </h4>
-            </div>
-
-            <div className={`p-4 rounded-xl text-xs leading-relaxed border ${
-              isLight ? "bg-slate-50 border-slate-200 text-slate-700" : "bg-white/3 border-white/5 text-white/70"
-            }`}>
-              <span className="text-[10px] text-violet-400 font-bold uppercase tracking-wider block mb-1">Standard Explanation:</span>
-              <p>{feedback.explanation}</p>
-            </div>
-
-            {/* Deep AI Explanation trigger */}
-            {!feedback.is_correct && (
-              <div className="space-y-3">
-                {!deepExplanation && !loadingExplain && (
-                  <button 
-                    onClick={triggerDeepExplanation}
-                    className="inline-flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 font-bold underline transition-colors cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" /> Explain with MLSU Syllabus AI Tutor
-                  </button>
-                )}
-
-                {loadingExplain && (
-                  <div className="flex items-center gap-2 text-xs text-white/40">
-                    <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span>AI Tutor is drafting custom explanations grounded in your curriculum...</span>
-                  </div>
-                )}
-
-                {deepExplanation && (
-                  <div className={`p-4 rounded-xl text-xs leading-relaxed border-l-4 border-l-violet-500 shadow-md ${
-                    isLight ? "bg-violet-50/50 border-slate-200 text-slate-800" : "bg-violet-500/5 border-white/5 text-white/90"
-                  }`}>
-                    <span className="text-[10px] text-violet-400 font-black uppercase tracking-widest block mb-2 flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5 text-violet-500" /> Syllabus Tutor Custom Explanation
-                    </span>
-                    <p className="whitespace-pre-line leading-relaxed">{deepExplanation}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Action Buttons */}
         <div className="flex flex-col gap-4 items-center">
-          {!isLocked ? (
-            <div className="flex justify-between items-center w-full max-w-sm">
-              <button
-                onClick={skipQuestion}
-                className={`text-xs font-bold tracking-wider cursor-pointer uppercase transition-colors ${
-                  isLight ? "text-slate-400 hover:text-slate-800" : "text-white/30 hover:text-white"
-                }`}
-              >
-                Skip Question
-              </button>
-              <button
-                onClick={() => handleAnswerSubmit()}
-                disabled={!selectedAnswer}
-                className="px-10 py-3.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-650 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition-all disabled:opacity-50 cursor-pointer"
-              >
-                Submit Answer
-              </button>
-            </div>
-          ) : (
+          <div className="flex justify-center items-center w-full max-w-sm">
             <button
-              onClick={nextQuestion}
-              className="px-12 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 cursor-pointer"
+              onClick={() => handleAnswerSubmit()}
+              disabled={!selectedAnswer || loading}
+              className="px-12 py-3.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-650 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition-all disabled:opacity-50 cursor-pointer"
             >
-              {currentIdx < 9 ? "Next Question" : "View Results Report"}
-              <ArrowRight className="w-4 h-4" />
+              {loading ? "Loading..." : currentIdx < totalQuestions - 1 ? "Next Question" : "Submit Quiz"}
             </button>
-          )}
+          </div>
         </div>
 
         {/* Quit Confirmation */}
@@ -909,18 +904,6 @@ export default function AdaptiveQuizPage() {
 
     const message = results.score >= 80 ? "Excellent Mastery! 🎉" : results.score >= 60 ? "Good Performance! 👍" : "Needs Conceptual Focus! 💪";
     
-    // Prepare Chart Data
-    const unitChartData = Object.entries(results.unit_accuracy).map(([unit, acc]) => ({
-      name: unit,
-      Accuracy: Math.round(acc)
-    }));
-
-    const bloomChartData = Object.entries(results.bloom_accuracy).map(([level, acc]) => ({
-      subject: level,
-      Accuracy: Math.round(acc),
-      fullMark: 100
-    }));
-
     return (
       <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative pb-12">
         {/* Banner Card */}
@@ -929,12 +912,12 @@ export default function AdaptiveQuizPage() {
         }`}>
           <h2 className={`text-2xl font-black font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Adaptive Assessment Report</h2>
           
-          <ScoreRing score={results.score} />
+          <ScoreRing score={results.score} isLight={isLight} />
 
           <div>
             <h3 className={`text-xl font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>{message}</h3>
             <p className={`text-xs mt-1 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>
-              Session Score: {results.correct_count} / {results.total_questions} correct solutions
+              Session Score: {results.score}% ({results.correct_count} Correct, {results.total_questions - results.correct_count} Incorrect)
             </p>
           </div>
 
@@ -948,226 +931,55 @@ export default function AdaptiveQuizPage() {
           </div>
         </div>
 
-        {/* Analytics Charts Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Readiness Gauge */}
-          <div className={`border rounded-2xl p-5 flex flex-col justify-between shadow-lg ${
+        {/* Minimal Grid layout: Exam Readiness & Time Analysis */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Readiness Gauge Card */}
+          <div className={`border rounded-2xl p-6 flex flex-col items-center justify-between shadow-lg text-center ${
             isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
           }`}>
-            <h4 className={`text-sm font-bold font-outfit border-b pb-2 mb-2 flex items-center gap-1.5 ${isLight ? 'text-slate-800 border-slate-200' : 'text-white border-white/10'}`}>
-              <Target className="w-4 h-4 text-violet-500" /> Exam Readiness
-            </h4>
-            <ReadinessArc score={results.predicted_readiness} label={results.readiness_label} />
-            <p className={`text-[10px] text-center leading-relaxed ${isLight ? 'text-slate-500' : 'text-white/50'}`}>
+            <div className="w-full flex items-center justify-center gap-1.5 border-b pb-3 mb-4">
+              <Target className="w-4 h-4 text-violet-500" />
+              <h4 className={`text-sm font-bold font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Exam Readiness</h4>
+            </div>
+            <ReadinessArc score={results.predicted_readiness} label={results.readiness_label} isLight={isLight} />
+            <p className={`text-[11px] leading-relaxed max-w-xs mt-3 ${isLight ? 'text-slate-500' : 'text-white/50'}`}>
               Predicted university exam success rate, combining difficulty levels and Bloom taxonomy metrics.
             </p>
           </div>
 
-          {/* Recharts Unit Bar Chart */}
-          <div className={`border rounded-2xl p-5 shadow-lg md:col-span-2 ${
-            isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
-          }`}>
-            <h4 className={`text-sm font-bold font-outfit border-b pb-2 mb-4 flex items-center gap-1.5 ${isLight ? 'text-slate-800 border-slate-200' : 'text-white border-white/10'}`}>
-              <BookOpen className="w-4 h-4 text-violet-500" /> Unit-wise Accuracy (%)
-            </h4>
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={unitChartData}>
-                  <XAxis dataKey="name" stroke={isLight ? "#475569" : "#ffffff60"} fontSize={10} fontWeight="bold" />
-                  <YAxis stroke={isLight ? "#475569" : "#ffffff60"} fontSize={10} domain={[0, 100]} />
-                  <ChartTooltip 
-                    contentStyle={{ 
-                      backgroundColor: isLight ? "#ffffff" : "#1e293b", 
-                      borderColor: isLight ? "#cbd5e1" : "#ffffff15", 
-                      color: isLight ? "#0f172a" : "#fff",
-                      fontSize: "11px",
-                      borderRadius: "8px"
-                    }} 
-                  />
-                  <Bar dataKey="Accuracy" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Recharts Bloom's Radar Chart */}
-          <div className={`border rounded-2xl p-5 shadow-lg md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6 items-center ${
-            isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
-          }`}>
-            <div className="md:col-span-2">
-              <h4 className={`text-sm font-bold font-outfit border-b pb-2 mb-4 flex items-center gap-1.5 ${isLight ? 'text-slate-800 border-slate-200' : 'text-white border-white/10'}`}>
-                <BrainCircuit className="w-4 h-4 text-violet-500" /> Bloom's Taxonomy Cognitive Levels
-              </h4>
-              <div className="h-56 w-full flex justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" radius="70%" data={bloomChartData}>
-                    <PolarGrid stroke={isLight ? "#cbd5e1" : "#ffffff10"} />
-                    <PolarAngleAxis dataKey="subject" stroke={isLight ? "#475569" : "#ffffff60"} fontSize={10} fontWeight="bold" />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} stroke={isLight ? "#475569" : "#ffffff30"} fontSize={8} />
-                    <Radar name="Cognitive Level" dataKey="Accuracy" stroke="#8B5CF6" fill="#8B5CF6" fillOpacity={0.4} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              <h5 className={`text-xs font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-white/40'}`}>Cognitive Strengths</h5>
-              <div className="space-y-2">
-                {bloomChartData.map((level) => (
-                  <div key={level.subject} className="flex justify-between items-center text-xs">
-                    <span className={isLight ? 'text-slate-600' : 'text-white/70'}>{level.subject}:</span>
-                    <span className={`font-black ${level.Accuracy >= 75 ? "text-emerald-400" : level.Accuracy >= 50 ? "text-amber-400" : "text-rose-400"}`}>
-                      {level.Accuracy}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Weak Areas Section */}
-        {results.weak_topics && results.weak_topics.length > 0 && (
-          <div className="space-y-3">
-            <h3 className={`text-lg font-bold font-outfit px-1 ${isLight ? 'text-slate-800' : 'text-white'}`}>Syllabus Areas Requiring Remediation</h3>
-            <div className="grid grid-cols-1 gap-3">
-              {results.weak_topics.map((weak, idx) => (
-                <div 
-                  key={idx} 
-                  className={`border border-l-4 border-l-rose-500 rounded-xl p-4 flex items-center justify-between gap-4 ${
-                    isLight ? "bg-white border-slate-200" : "bg-white/5 border-white/10"
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold truncate ${isLight ? 'text-slate-800' : 'text-white'}`}>{weak.topic}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                        <div className="bg-rose-500 h-full" style={{ width: `${weak.accuracy}%` }} />
-                      </div>
-                      <span className="text-[9px] font-bold text-rose-400 uppercase shrink-0">
-                        {Math.round(weak.accuracy)}% Accuracy ({weak.total_attempts} trials)
-                      </span>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => navigate("/student/questions", { state: { prefillSubject: results.subject_name, prefillTopic: weak.topic } })}
-                    className={`px-4 py-2 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer shrink-0 ${
-                      isLight 
-                        ? 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100' 
-                        : 'border-white/10 bg-white/5 text-white hover:bg-white/10'
-                    }`}
-                  >
-                    Generate Practice drills
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Time Analysis + Strong Topics row ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Time Analysis */}
+          {/* Time Analysis Card */}
           {results.time_analysis && (
-            <div className={`border rounded-2xl p-5 space-y-4 shadow-lg ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
-              <h4 className={`text-sm font-bold font-outfit border-b pb-2 flex items-center gap-1.5 ${isLight ? 'text-slate-800 border-slate-200' : 'text-white border-white/10'}`}>
-                <Clock className="w-4 h-4 text-blue-400" /> Time Analysis
-              </h4>
-              <div className="space-y-3">
+            <div className={`border rounded-2xl p-6 flex flex-col justify-between shadow-lg ${
+              isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'
+            }`}>
+              <div className="w-full flex items-center justify-center gap-1.5 border-b pb-3 mb-4">
+                <Clock className="w-4 h-4 text-blue-400" />
+                <h4 className={`text-sm font-bold font-outfit ${isLight ? 'text-slate-800' : 'text-white'}`}>Time Analysis</h4>
+              </div>
+              <div className="flex-1 flex flex-col justify-center space-y-4 py-2">
                 <div className={`flex justify-between items-center text-sm ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
                   <span>Total Time</span>
-                  <span className="font-bold">{Math.floor(results.time_analysis.total_time_seconds / 60)}m {results.time_analysis.total_time_seconds % 60}s</span>
+                  <span className="font-extrabold">{Math.floor(results.time_analysis.total_time_seconds / 60)}m {results.time_analysis.total_time_seconds % 60}s</span>
                 </div>
                 <div className={`flex justify-between items-center text-sm ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
                   <span>Avg per Question</span>
-                  <span className="font-bold">{results.time_analysis.avg_time_per_question_seconds}s</span>
+                  <span className="font-extrabold">{results.time_analysis.avg_time_per_question_seconds}s</span>
                 </div>
                 <div className={`flex justify-between items-center text-sm ${isLight ? 'text-slate-600' : 'text-white/70'}`}>
                   <span>Speed Rating</span>
-                  <span className={`font-black text-xs px-2.5 py-0.5 rounded-full border ${
+                  <span className={`font-black text-xs px-3 py-1 rounded-full border ${
                     results.time_analysis.time_efficiency === "Fast" ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
                     results.time_analysis.time_efficiency === "Optimal" ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
                     "text-amber-400 border-amber-500/30 bg-amber-500/10"
                   }`}>{results.time_analysis.time_efficiency}</span>
                 </div>
               </div>
+              <div className="w-full text-center mt-3 pt-3 border-t border-white/5">
+                <p className={`text-[10px] leading-relaxed ${isLight ? 'text-slate-400' : 'text-white/30'}`}>Based on response speed per question</p>
+              </div>
             </div>
           )}
-
-          {/* Strong Topics */}
-          <div className={`border rounded-2xl p-5 space-y-4 shadow-lg ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
-            <h4 className={`text-sm font-bold font-outfit border-b pb-2 flex items-center gap-1.5 ${isLight ? 'text-slate-800 border-slate-200' : 'text-white border-white/10'}`}>
-              <Award className="w-4 h-4 text-emerald-400" /> Strong Topics
-            </h4>
-            {results.strong_topics && results.strong_topics.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {results.strong_topics.map((t, i) => (
-                  <span key={i} className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
-                    ✓ {t}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Complete more quizzes to identify your strong topics.</p>
-            )}
-          </div>
         </div>
-
-        {/* Revision Recommendations */}
-        {results.recommended_revision_topics && results.recommended_revision_topics.length > 0 && (
-          <div className={`border rounded-2xl p-5 space-y-3 ${isLight ? 'bg-amber-50 border-amber-200' : 'bg-amber-500/10 border-amber-500/20'}`}>
-            <h4 className={`text-sm font-bold font-outfit flex items-center gap-1.5 ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
-              <BookOpen className="w-4 h-4 text-amber-500" /> Recommended for Revision
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {results.recommended_revision_topics.map((t, i) => (
-                <button
-                  key={i}
-                  onClick={() => navigate("/student/questions", { state: { prefillSubject: results.subject_name, prefillTopic: t } })}
-                  className="px-3 py-1 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/25 hover:bg-amber-500/25 transition-colors cursor-pointer"
-                >
-                  📚 {t}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Difficulty Progression Chart */}
-        {results.difficulty_progression && results.difficulty_progression.length > 0 && (
-          <div className={`border rounded-2xl p-5 shadow-lg ${isLight ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
-            <h4 className={`text-sm font-bold font-outfit border-b pb-2 mb-4 flex items-center gap-1.5 ${isLight ? 'text-slate-800 border-slate-200' : 'text-white border-white/10'}`}>
-              <TrendingUp className="w-4 h-4 text-violet-400" /> Difficulty Progression
-            </h4>
-            <div className="h-36 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={results.difficulty_progression.map(d => ({
-                  q: `Q${d.question_num}`,
-                  level: d.difficulty === "easy" ? 1 : d.difficulty === "medium" ? 2 : 3,
-                  correct: d.is_correct,
-                  topic: d.topic
-                }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={isLight ? "#e2e8f0" : "#ffffff10"} />
-                  <XAxis dataKey="q" stroke={isLight ? "#475569" : "#ffffff60"} fontSize={10} />
-                  <YAxis
-                    stroke={isLight ? "#475569" : "#ffffff60"} fontSize={9}
-                    tickFormatter={(v) => v === 1 ? "Easy" : v === 2 ? "Medium" : "Hard"}
-                    domain={[0.5, 3.5]} ticks={[1, 2, 3]}
-                  />
-                  <ChartTooltip
-                    formatter={(value, name, props) => {
-                      const lvl = ["", "Easy", "Medium", "Hard"][value] || value;
-                      return [lvl, "Difficulty"];
-                    }}
-                    contentStyle={{ backgroundColor: isLight ? "#fff" : "#1e293b", borderColor: isLight ? "#cbd5e1" : "#ffffff15", color: isLight ? "#0f172a" : "#fff", fontSize: "11px", borderRadius: "8px" }}
-                  />
-                  <Line type="stepAfter" dataKey="level" stroke="#8B5CF6" strokeWidth={2} dot={{ fill: "#8B5CF6", r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <p className={`text-[10px] mt-2 ${isLight ? 'text-slate-400' : 'text-white/40'}`}>Tracks how difficulty adjusted in real-time based on your answers</p>
-          </div>
-        )}
 
         {/* Review Questions List (Accordion style) */}
         <div className="space-y-3">
@@ -1293,7 +1105,7 @@ export default function AdaptiveQuizPage() {
         {/* Bottom Actions */}
         <div className="flex gap-3 justify-center pt-6">
           <button 
-            onClick={() => setScreen("setup")}
+            onClick={() => { setNumQuestions(null); setScreen("setup"); }}
             className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-650 hover:opacity-95 text-white font-bold shadow-lg text-xs cursor-pointer"
           >
             Take Another Quiz

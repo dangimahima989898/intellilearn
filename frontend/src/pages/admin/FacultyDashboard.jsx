@@ -15,8 +15,8 @@ export default function FacultyDashboard() {
   useEffect(() => {
     const fetchAssignedSubjects = async () => {
       try {
-        const res = await api.get('/api/v1/hod/faculty')
-        const me = res.data.find(f => f.email === user?.email)
+        const res = await api.get('/api/v1/hod/faculty/all')
+        const me = res.data.find(f => f.email?.trim().toLowerCase() === user?.email?.trim().toLowerCase())
         if (me && me.subjects) {
           setSubjects(me.subjects)
         }
@@ -63,18 +63,26 @@ export default function FacultyDashboard() {
                 <h3 className="text-xl font-bold text-white mb-1">{sub.code}</h3>
                 <p className="text-sm font-medium text-white/50 mb-6">{sub.name}</p>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 mt-4">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => navigate(`/admin/notes?tab=browse&subjectId=${sub.subject_id}`)}
+                      className="il-btn il-btn-secondary flex-1 text-xs font-semibold py-2"
+                    >
+                      Manage Notes
+                    </button>
+                    <button 
+                      onClick={() => navigate(`/admin/notes?tab=analytics&subjectId=${sub.subject_id}`)}
+                      className="il-btn il-btn-primary flex-1 text-xs font-semibold py-2"
+                    >
+                      Analytics
+                    </button>
+                  </div>
                   <button 
-                    onClick={() => navigate(`/admin/notes?tab=browse&subjectId=${sub.subject_id}`)}
-                    className="il-btn il-btn-secondary flex-1 text-xs font-semibold py-2"
+                    onClick={() => navigate(`/admin/topics?subjectId=${sub.subject_id}`)}
+                    className="il-btn il-btn-outline w-full text-xs font-bold py-2 border border-white/10 hover:border-white/20 hover:bg-white/5 text-white transition rounded-xl"
                   >
-                    Manage Notes
-                  </button>
-                  <button 
-                    onClick={() => navigate(`/admin/notes?tab=analytics&subjectId=${sub.subject_id}`)}
-                    className="il-btn il-btn-primary flex-1 text-xs font-semibold py-2"
-                  >
-                    Analytics
+                    Manage Topics
                   </button>
                 </div>
               </div>

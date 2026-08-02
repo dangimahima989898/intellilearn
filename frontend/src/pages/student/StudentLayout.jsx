@@ -249,10 +249,10 @@ export default function StudentLayout() {
     </div>
   )
 
-  const streakValue = user?.streak_count || 12
+  const streakValue = user?.streak_count || 0
 
   return (
-    <div className={`flex h-screen overflow-hidden font-dm ${isLight ? 'bg-slate-100' : 'bg-[#0A0F1E]'}`}>
+    <div id="student-root" className={`flex h-screen overflow-hidden font-dm ${isLight ? 'light-theme bg-slate-100' : 'bg-[#0A0F1E]'}`}>
       
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:block w-64 h-screen border-r shrink-0 fixed top-0 left-0 z-30 ${
@@ -304,19 +304,6 @@ export default function StudentLayout() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Theme Toggle */}
-            <button
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              className={`w-8 h-8 flex items-center justify-center rounded-full border transition-all duration-200 ${
-                isLight 
-                  ? 'border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900' 
-                  : 'border-white/10 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white'
-              }`}
-            >
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-
             {/* Notification Bell */}
             <NotificationBell />
 

@@ -8,10 +8,11 @@ const quizService = {
     return response.data;
   },
 
-  startQuiz: async (subjectId, topic) => {
+  startQuiz: async (subjectId, topic, numQuestions) => {
     const response = await api.post('/adaptive-quiz/start', {
       subject_id: subjectId,
       topic,
+      num_questions: numQuestions
     });
     return response.data;
   },
@@ -21,13 +22,13 @@ const quizService = {
     return response.data;
   },
 
-  submitAnswer: async (attemptId, questionId, selectedAnswer, timeTakenSeconds) => {
+  submitAnswer: async (attemptId, questionId, selectedAnswer, timeTakenSeconds, timeoutMs) => {
     const response = await api.post('/adaptive-quiz/answer', {
       attempt_id: attemptId,
       question_id: questionId,
       selected_answer: selectedAnswer,
       time_taken_seconds: timeTakenSeconds
-    });
+    }, timeoutMs ? { timeout: timeoutMs } : undefined);
     return response.data;
   },
 

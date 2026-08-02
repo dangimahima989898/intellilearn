@@ -117,14 +117,21 @@ async def get_dashboard_stats(
     health_score = int(0.4 * quiz_acc + 0.3 * challenge_rate + 0.3 * resolved_rate)
     health_score = max(0, min(100, health_score))
 
+    # Average quiz attempt score
+    avg_score_stmt = select(func.avg(QuizAttempt.score)).where(QuizAttempt.score.isnot(None))
+    avg_score_res = await db.execute(avg_score_stmt)
+    avg_score = avg_score_res.scalar() or 0.0
+
     return {
         "approved_students": approved_students,
+        "total_students": total_students,
         "pending_approvals": pending_approvals,
         "unassigned_subjects": unassigned_subjects,
         "flagged_ai_answers": flagged_pending,
         "pending_leaves": pending_leaves,
         "todays_classes": todays_classes,
         "department_health_score": health_score,
+        "avg_quiz_score": round(avg_score, 1),
     }
 
 @router.get("/semester-progress")
@@ -192,10 +199,14 @@ async def get_at_risk_students(
     # Inactive > 7 days: User.last_active_date < today - 7 days
     cutoff_date = date.today() - timedelta(days=7)
     
-    # Query all active students
+    # Query all active students (filtered by HOD's department)
     students_stmt = select(User, StudentEnrollment).join(
         StudentEnrollment, StudentEnrollment.student_id == User.id
-    ).where(User.role == "student", User.status == "approved")
+    ).where(
+        User.role == "student",
+        User.status == "approved",
+        User.department_id == current_user.department_id
+    )
     
     students_res = await db.execute(students_stmt)
     records = students_res.all()

@@ -33,9 +33,10 @@ export default function NoteUpload() {
   const [isDragActive, setIsDragActive] = useState(false)
   const fileInputRef = useRef(null)
 
-  // Fetch courses on mount
+  // Fetch initial data on mount
   useEffect(() => {
     fetchCourses()
+    fetchAllSubjects()
     fetchActiveQueue()
     
     // Poll queue status every 5 seconds
@@ -44,16 +45,6 @@ export default function NoteUpload() {
     }, 5000)
     return () => clearInterval(interval)
   }, [])
-
-  // Fetch subjects when course or semester changes
-  useEffect(() => {
-    if (selectedCourse && selectedSemester) {
-      fetchSubjects(selectedCourse, selectedSemester)
-    } else {
-      setSubjects([])
-      setSelectedSubject("")
-    }
-  }, [selectedCourse, selectedSemester])
 
   const fetchCourses = async () => {
     try {
@@ -64,15 +55,10 @@ export default function NoteUpload() {
     }
   }
 
-  const fetchSubjects = async (courseId, sem) => {
+  const fetchAllSubjects = async () => {
     try {
-      const data = await adminService.getSubjects(courseId, sem)
+      const data = await adminService.getSubjects()
       setSubjects(data)
-      if (data.length > 0) {
-        setSelectedSubject(data[0].id)
-      } else {
-        setSelectedSubject("")
-      }
     } catch (err) {
       toast.error("Failed to load subjects")
     }
@@ -87,17 +73,28 @@ export default function NoteUpload() {
     }
   }
 
-  const handleCourseChange = (e) => {
-    const courseId = e.target.value
-    setSelectedCourse(courseId)
-    setSelectedSemester("")
+  const handleSubjectChange = (e) => {
+    const subjId = e.target.value
+    setSelectedSubject(subjId)
     
-    const course = courses.find(c => c.id === courseId)
-    if (course) {
-      const totalSemesters = course.duration_years * 2
-      const sems = Array.from({ length: totalSemesters }, (_, i) => i + 1)
-      setSemestersList(sems)
+    if (subjId) {
+      const sub = subjects.find(s => s.id === subjId)
+      if (sub) {
+        setSelectedCourse(sub.course_id || "")
+        setSelectedSemester(sub.semester_number || "")
+        if (sub.semester_number) {
+          setSemestersList([sub.semester_number])
+        } else {
+          setSemestersList([])
+        }
+      } else {
+        setSelectedCourse("")
+        setSelectedSemester("")
+        setSemestersList([])
+      }
     } else {
+      setSelectedCourse("")
+      setSelectedSemester("")
       setSemestersList([])
     }
   }
@@ -222,45 +219,6 @@ export default function NoteUpload() {
 
             <form onSubmit={handleUploadSubmit} className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Course Selection */}
-                <div>
-                  <label className="text-[10px] text-slate-500 dark:text-white/50 font-bold block mb-1.5 tracking-wider uppercase">
-                    Course <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={selectedCourse}
-                    onChange={handleCourseChange}
-                    className="w-full bg-slate-50 dark:bg-[#121829]/50 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-violet-500 transition-colors"
-                    required
-                  >
-                    <option value="">Select Course</option>
-                    {courses.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Semester Selection */}
-                <div>
-                  <label className="text-[10px] text-slate-500 dark:text-white/50 font-bold block mb-1.5 tracking-wider uppercase">
-                    Semester <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={selectedSemester}
-                    onChange={(e) => setSelectedSemester(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-[#121829]/50 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
-                    disabled={!selectedCourse}
-                    required
-                  >
-                    <option value="">Select Semester</option>
-                    {semestersList.map(sem => (
-                      <option key={sem} value={sem}>Semester {sem}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Subject Selection */}
                 <div>
                   <label className="text-[10px] text-slate-500 dark:text-white/50 font-bold block mb-1.5 tracking-wider uppercase">
@@ -268,9 +226,8 @@ export default function NoteUpload() {
                   </label>
                   <select
                     value={selectedSubject}
-                    onChange={(e) => setSelectedSubject(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-[#121829]/50 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
-                    disabled={subjects.length === 0}
+                    onChange={handleSubjectChange}
+                    className="w-full bg-slate-50 dark:bg-[#121829]/50 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-violet-500 transition-colors"
                     required
                   >
                     <option value="">Select Subject</option>
@@ -293,6 +250,44 @@ export default function NoteUpload() {
                   >
                     {["Unit 1", "Unit 2", "Unit 3", "Unit 4", "Unit 5"].map(unit => (
                       <option key={unit} value={unit}>{unit}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Course Selection (Locked) */}
+                <div>
+                  <label className="text-[10px] text-slate-550 dark:text-white/55 font-bold block mb-1.5 tracking-wider uppercase">
+                    Course (Auto-selected)
+                  </label>
+                  <select
+                    value={selectedCourse}
+                    className="w-full bg-slate-100 dark:bg-[#121829]/30 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-slate-500 dark:text-white/50 text-sm focus:outline-none cursor-not-allowed"
+                    disabled
+                    required
+                  >
+                    <option value="">Select Course</option>
+                    {courses.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Semester Selection (Locked) */}
+                <div>
+                  <label className="text-[10px] text-slate-550 dark:text-white/55 font-bold block mb-1.5 tracking-wider uppercase">
+                    Semester (Auto-selected)
+                  </label>
+                  <select
+                    value={selectedSemester}
+                    className="w-full bg-slate-100 dark:bg-[#121829]/30 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-slate-500 dark:text-white/50 text-sm focus:outline-none cursor-not-allowed"
+                    disabled
+                    required
+                  >
+                    <option value="">Select Semester</option>
+                    {semestersList.map(sem => (
+                      <option key={sem} value={sem}>Semester {sem}</option>
                     ))}
                   </select>
                 </div>

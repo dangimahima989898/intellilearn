@@ -219,14 +219,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-[#0A0F1E] font-dm text-white flex relative overflow-hidden">
-      {/* Floating Theme Toggle */}
-      <button
-        onClick={toggleTheme}
-        title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-        className="fixed top-6 right-6 z-50 w-10 h-10 flex items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all duration-200 shadow-lg"
-      >
-        {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-      </button>
+
       
       {/* Aurora Background Orbs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">

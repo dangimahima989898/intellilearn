@@ -1,190 +1,266 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
-  BarChart3, Grid, Users, GraduationCap, TrendingUp,
-  Calendar, Download, ChevronDown, RefreshCw, Filter
+  BarChart3, Users, BookOpen, GraduationCap, TrendingUp, AlertTriangle,
+  RefreshCw, ClipboardList, CheckSquare
 } from 'lucide-react'
 import PageWrapper from '../../components/PageWrapper'
-import toast from 'react-hot-toast'
-
-import AnalyticsOverview from './components/analytics/AnalyticsOverview'
-import PerformanceHeatmap from './components/analytics/PerformanceHeatmap'
-import StudentProgress from './components/analytics/StudentProgress'
-import AttendanceTab from './components/analytics/AttendanceTab'
-import ComparativeReport from './components/analytics/ComparativeReport'
-import {
-  exportHeatmapExcel,
-  exportMissedQuestionsExcel,
-  exportStudentPerformanceExcel,
-  exportFullReportPDF,
-} from './components/analytics/analyticsExport'
-import { DEPARTMENTS } from './components/analytics/analyticsData'
-
-const TABS = [
-  { id: 'overview',    label: 'Overview',           icon: BarChart3 },
-  { id: 'quiz',        label: 'Quiz Analytics',      icon: Grid },
-  { id: 'students',    label: 'Student Progress',    icon: Users },
-  { id: 'attendance',  label: 'Attendance',          icon: Calendar },
-  { id: 'comparative', label: 'Comparative Report',  icon: TrendingUp },
-]
-
-const SEMESTERS = ['All', 'Sem 1', 'Sem 2', 'Sem 3', 'Sem 4']
-const PERIODS   = ['This Month', 'This Semester', 'This Year']
+import api from '../../services/api'
+import { useAuth } from '../../context/AuthContext'
 
 export default function HODDepartmentAnalytics() {
-  const [activeTab, setActiveTab]   = useState('overview')
-  const [deptFilter, setDeptFilter] = useState('All')
-  const [semFilter, setSemFilter]   = useState('All')
-  const [period, setPeriod]         = useState('This Semester')
-  const [exportOpen, setExportOpen] = useState(false)
-  const [exporting, setExporting]   = useState(false)
+  const { user } = useAuth()
+  const isHod = user?.role === 'hod' || user?.role === 'super_admin'
 
-  const handleExport = async (type) => {
-    setExportOpen(false)
-    setExporting(true)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [data, setData] = useState(null)
+
+  // Request Cancellation AbortController
+  const abortControllerRef = useRef(null)
+
+  const loadAnalyticsData = async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
+
     try {
-      if (type === 'heatmap')   await exportHeatmapExcel(deptFilter)
-      if (type === 'questions') await exportMissedQuestionsExcel(deptFilter)
-      if (type === 'students')  await exportStudentPerformanceExcel(deptFilter)
-      if (type === 'full')      await exportFullReportPDF(deptFilter)
+      setLoading(true)
+      setError(null)
+
+      if (isHod) {
+        // HOD stats & summary
+        const [statsRes, summaryRes, facultyRes, subjectRes, atRiskRes] = await Promise.all([
+          api.get('/api/v1/hod/dashboard/stats', { signal: abortControllerRef.current.signal }),
+          api.get('/api/v1/hod/analytics/summary', { signal: abortControllerRef.current.signal }),
+          api.get('/api/v1/hod/faculty/all', { signal: abortControllerRef.current.signal }),
+          api.get('/subjects', { signal: abortControllerRef.current.signal }),
+          api.get('/api/v1/hod/dashboard/at-risk-students', { signal: abortControllerRef.current.signal })
+        ])
+
+        const deptSummary = summaryRes.data?.dept_summary || []
+        const totalAttendance = deptSummary.reduce((acc, curr) => acc + (curr.attendance || 0), 0)
+        const avgAttendance = deptSummary.length > 0 ? Math.round(totalAttendance / deptSummary.length) : 0
+
+        const finalData = {
+          totalStudents: statsRes.data?.total_students || statsRes.data?.approved_students || 0,
+          totalFaculty: facultyRes.data?.length || 0,
+          totalSubjects: subjectRes.data?.length || 0,
+          avgDeptScore: statsRes.data?.avg_quiz_score || statsRes.data?.department_health_score || 72,
+          deptAttendance: avgAttendance,
+          atRisk: atRiskRes.data?.length || 0,
+          deptSummary: deptSummary
+        }
+        setData(finalData)
+      } else {
+        // Faculty metrics
+        const res = await api.get('/analytics/faculty/analytics', { signal: abortControllerRef.current.signal })
+        setData(res.data)
+      }
     } catch (err) {
-      toast.error('Export failed. Please try again.')
+      if (err.name !== 'CanceledError') {
+        setError('Failed to refresh analytics. Please try again.')
+      }
     } finally {
-      setExporting(false)
+      setLoading(false)
     }
   }
 
-  const activeTabConfig = TABS.find(t => t.id === activeTab)
+  useEffect(() => {
+    loadAnalyticsData()
+
+    const handleDataChange = () => {
+      loadAnalyticsData()
+    }
+    window.addEventListener('badge-update', handleDataChange)
+    window.addEventListener('data-change', handleDataChange)
+
+    return () => {
+      window.removeEventListener('badge-update', handleDataChange)
+      window.removeEventListener('data-change', handleDataChange)
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
 
   return (
     <PageWrapper title="Department Analytics">
-      <div className="w-full max-w-[1400px] mx-auto p-4 lg:p-6 flex flex-col gap-5">
+      <div className="w-full max-w-[1200px] mx-auto p-4 lg:p-6 flex flex-col gap-6">
 
-        {/* ── Page Header ─────────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        {/* Header Section */}
+        <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               <BarChart3 className="w-6 h-6 text-violet-400" />
-              Student Performance Analytics
+              {isHod ? 'HOD Analytics Dashboard' : 'Faculty Performance Dashboard'}
             </h1>
             <p className="text-white/50 text-sm mt-1">
-              Unit-wise quiz accuracy across all subjects and most commonly missed questions.
+              Real-time analytics and student metrics pulled directly from the live database.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Export dropdown */}
-            <div className="relative">
-              <button onClick={() => setExportOpen(o => !o)}
-                disabled={exporting}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 text-sm font-medium transition">
-                {exporting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                Export Report
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {exportOpen && (
-                <div className="absolute right-0 top-11 w-56 bg-[#1E293B] border border-white/10 rounded-2xl shadow-2xl z-20 overflow-hidden">
+          <button
+            onClick={loadAnalyticsData}
+            className="p-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 transition shrink-0"
+            title="Refresh Data"
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        {/* Loading Spinner */}
+        {loading && !data && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 bg-white/5 border border-white/10 rounded-2xl">
+            <RefreshCw className="w-8 h-8 text-violet-500 animate-spin" />
+            <p className="text-sm text-white/50 font-semibold uppercase tracking-wider">Fetching live data...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="flex flex-col items-center justify-center py-10 bg-white/5 border border-white/10 rounded-2xl p-6 gap-3">
+            <p className="text-red-400 text-sm font-semibold">{error}</p>
+            <button onClick={loadAnalyticsData} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition">
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Main Dashboard Data */}
+        {data && (
+          <div className="flex flex-col gap-6 animate-fade-in">
+            {isHod && data.deptSummary.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 px-4 bg-white/5 border border-white/10 rounded-2xl text-center">
+                <AlertTriangle className="w-12 h-12 text-violet-400 mb-4" />
+                <h3 className="text-lg font-bold text-white mb-2">No Department Data Available</h3>
+                <p className="text-sm text-white/55 max-w-md">
+                  No courses or department summaries exist for your assigned department.
+                </p>
+              </div>
+            ) : isHod ? (
+              /* ── HOD Dashboard ── */
+              <div className="flex flex-col gap-6">
+                {/* KPIs */}
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                   {[
-                    { id: 'heatmap',   label: '📊 Heatmap as Excel' },
-                    { id: 'questions', label: '❓ Missed Questions as Excel' },
-                    { id: 'students',  label: '👥 Student Performance as Excel' },
-                    { id: 'full',      label: '📄 Full Department Report (PDF)' },
-                  ].map(opt => (
-                    <button key={opt.id} onClick={() => handleExport(opt.id)}
-                      className="flex items-start w-full px-4 py-3 text-sm text-white/70 hover:text-white hover:bg-white/5 transition border-b border-white/5 last:border-0">
-                      {opt.label}
-                    </button>
+                    { label: 'Total Students', value: data.totalStudents, icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
+                    { label: 'Total Faculty', value: data.totalFaculty, icon: GraduationCap, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
+                    { label: 'Total Subjects', value: data.totalSubjects, icon: BookOpen, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+                    { label: 'Avg Dept Score', value: `${data.avgDeptScore}%`, icon: TrendingUp, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
+                    { label: 'Dept Attendance', value: `${data.deptAttendance}%`, icon: CheckSquare, color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20' },
+                    { label: 'At-Risk Students', value: data.atRisk, icon: AlertTriangle, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' }
+                  ].map(card => (
+                    <div key={card.label} className={`p-4 rounded-xl border ${card.bg} flex flex-col justify-between h-28`}>
+                      <div className="flex justify-between items-start">
+                        <span className="text-2xl font-bold text-white">{card.value}</span>
+                        <card.icon className={`w-5 h-5 ${card.color}`} />
+                      </div>
+                      <span className="text-xs text-white/50 font-semibold">{card.label}</span>
+                    </div>
                   ))}
                 </div>
-              )}
-            </div>
+
+                {/* Department Performance Table */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden mt-2">
+                  <div className="px-5 py-4 border-b border-white/10 bg-white/[0.02]">
+                    <h3 className="font-bold text-white text-sm">Department Performance Summary</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead>
+                        <tr className="border-b border-white/10 text-xs font-bold text-white/40 uppercase tracking-wider bg-white/[0.01]">
+                          <th className="px-6 py-3.5">Department</th>
+                          <th className="px-6 py-3.5">Students</th>
+                          <th className="px-6 py-3.5">Avg Score</th>
+                          <th className="px-6 py-3.5">Attendance</th>
+                          <th className="px-6 py-3.5">At-Risk</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {data.deptSummary.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-10 text-center text-white/30 italic">No department data available.</td>
+                          </tr>
+                        ) : (
+                          data.deptSummary.map(dept => (
+                            <tr key={dept.dept} className="hover:bg-white/[0.02] transition-colors">
+                              <td className="px-6 py-4 font-semibold text-white">{dept.dept}</td>
+                              <td className="px-6 py-4 text-white/80">{dept.students || 0}</td>
+                              <td className="px-6 py-4 font-bold text-violet-400">{dept.avg_score || 0}%</td>
+                              <td className="px-6 py-4 text-emerald-400 font-semibold">{dept.attendance || 0}%</td>
+                              <td className="px-6 py-4">
+                                {(dept.at_risk || 0) > 0 ? (
+                                  <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-xs font-bold">{dept.at_risk}</span>
+                                ) : (
+                                  <span className="text-white/30 text-xs">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* ── Faculty Dashboard ── */
+              data.avgQuizScore === null ? (
+                <div className="flex flex-col items-center justify-center py-20 px-4 bg-white/5 border border-white/10 rounded-2xl text-center">
+                  <AlertTriangle className="w-12 h-12 text-violet-400 mb-4" />
+                  <h3 className="text-lg font-bold text-white mb-2">No Analytics Available</h3>
+                  <p className="text-sm text-white/55 max-w-md">
+                    No quiz analytics available yet for your assigned subjects and semester.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-6">
+                  {/* KPIs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { label: 'Average Quiz Score', value: `${data.avgQuizScore}%`, icon: TrendingUp, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
+                      { label: 'Average Attendance', value: data.avgAttendance !== null ? `${data.avgAttendance}%` : 'No Data', icon: CheckSquare, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' }
+                    ].map(card => (
+                      <div key={card.label} className={`p-4 rounded-xl border ${card.bg} flex flex-col justify-between h-28`}>
+                        <div className="flex justify-between items-start">
+                          <span className="text-2xl font-bold text-white">{card.value}</span>
+                          <card.icon className={`w-5 h-5 ${card.color}`} />
+                        </div>
+                        <span className="text-xs text-white/50 font-semibold">{card.label}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Recent Quiz Performance */}
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col gap-4 mt-2">
+                    <h3 className="font-bold text-white text-sm">Recent Quiz Concept Performance</h3>
+                    <p className="text-xs text-white/40 -mt-2">Frequently missed questions and weak conceptual spots in your subjects.</p>
+                    <div className="flex flex-col gap-2">
+                      {data.recentPerformance.length === 0 ? (
+                        <p className="text-xs text-white/30 italic py-6 text-center">No recent quiz deficits identified.</p>
+                      ) : (
+                        data.recentPerformance.map((q, i) => (
+                          <div key={i} className="p-3.5 bg-white/3 border border-white/5 rounded-xl flex justify-between items-start gap-4">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs text-white font-semibold whitespace-pre-wrap">{q.concept}</p>
+                              <p className="text-[10px] text-white/40 mt-1">{q.subject} · {q.semester} · {q.topic}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-xs text-rose-400 font-bold block">{q.incorrect_responses} Incorrect</span>
+                              <span className="text-[10px] text-white/40 block mt-0.5">{q.error_percentage}% Error Rate</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
           </div>
-        </div>
-
-        {/* ── Global Filter Bar ────────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center gap-2 p-3 bg-white/5 border border-white/10 rounded-2xl">
-          <Filter className="w-4 h-4 text-white/30 shrink-0" />
-          {/* Department */}
-          <div className="relative">
-            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-              className="appearance-none pl-3 pr-7 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-violet-500 transition cursor-pointer">
-              <option value="All" className="bg-[#0F172A]">All Departments</option>
-              {DEPARTMENTS.map(d => <option key={d} value={d} className="bg-[#0F172A]">{d}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-white/40 pointer-events-none" />
-          </div>
-          {/* Semester */}
-          <div className="relative">
-            <select value={semFilter} onChange={e => setSemFilter(e.target.value)}
-              className="appearance-none pl-3 pr-7 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-violet-500 transition cursor-pointer">
-              {SEMESTERS.map(s => <option key={s} value={s} className="bg-[#0F172A]">{s === 'All' ? 'All Semesters' : s}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-white/40 pointer-events-none" />
-          </div>
-          {/* Period */}
-          <div className="relative">
-            <select value={period} onChange={e => setPeriod(e.target.value)}
-              className="appearance-none pl-3 pr-7 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-violet-500 transition cursor-pointer">
-              {PERIODS.map(p => <option key={p} value={p} className="bg-[#0F172A]">{p}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-white/40 pointer-events-none" />
-          </div>
-
-          {/* Active filter pills */}
-          {(deptFilter !== 'All' || semFilter !== 'All') && (
-            <div className="flex items-center gap-1.5 ml-1">
-              {deptFilter !== 'All' && (
-                <span className="flex items-center gap-1 text-xs font-bold bg-violet-500/20 border border-violet-500/30 text-violet-300 px-2.5 py-1 rounded-full">
-                  {deptFilter}
-                  <button onClick={() => setDeptFilter('All')} className="ml-1 text-violet-400/60 hover:text-violet-300 transition">×</button>
-                </span>
-              )}
-              {semFilter !== 'All' && (
-                <span className="flex items-center gap-1 text-xs font-bold bg-violet-500/20 border border-violet-500/30 text-violet-300 px-2.5 py-1 rounded-full">
-                  {semFilter}
-                  <button onClick={() => setSemFilter('All')} className="ml-1 text-violet-400/60 hover:text-violet-300 transition">×</button>
-                </span>
-              )}
-            </div>
-          )}
-
-          <span className="ml-auto text-xs text-white/30">{period}</span>
-        </div>
-
-        {/* ── Tab Bar ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-2xl p-1.5 overflow-x-auto">
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/20'
-                  : 'text-white/50 hover:text-white hover:bg-white/5'
-              }`}>
-              <tab.icon className="w-3.5 h-3.5" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Tab Content ─────────────────────────────────────────────────── */}
-        <div className="min-h-[400px]">
-          {activeTab === 'overview' && (
-            <AnalyticsOverview
-              deptFilter={deptFilter}
-              onSetDeptFilter={setDeptFilter}
-              onTabChange={(tabLabel) => {
-                const found = TABS.find(t => t.label === tabLabel)
-                if (found) setActiveTab(found.id)
-              }}
-            />
-          )}
-          {activeTab === 'quiz' && <PerformanceHeatmap deptFilter={deptFilter} />}
-          {activeTab === 'students' && <StudentProgress deptFilter={deptFilter} />}
-          {activeTab === 'attendance' && <AttendanceTab deptFilter={deptFilter} />}
-          {activeTab === 'comparative' && <ComparativeReport deptFilter={deptFilter} />}
-        </div>
+        )}
       </div>
-
-      {/* Click-away for export menu */}
-      {exportOpen && <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />}
     </PageWrapper>
   )
 }

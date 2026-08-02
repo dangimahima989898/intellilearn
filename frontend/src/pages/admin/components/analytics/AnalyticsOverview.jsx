@@ -11,8 +11,6 @@ import { DEPT_CONFIG, DEPARTMENTS } from './analyticsData'
 import hodService from '../../../../services/hodService'
 import toast from 'react-hot-toast'
 
-// AI Insights are dynamically loaded and computed inside the component
-
 const INSIGHT_COLOR = {
   performance: 'border-violet-500/20 bg-violet-500/5',
   improvement: 'border-green-500/20 bg-green-500/5',
@@ -25,8 +23,8 @@ const CustomTooltip = ({ active, payload, label }) => {
     <div className="bg-[#1E293B] border border-white/10 rounded-xl p-3 shadow-2xl">
       <p className="text-xs font-bold text-white/60 mb-1">{label}</p>
       {payload.map(p => (
-        <div key={p.dataKey} className="flex items-center gap-2 text-xs">
-          <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+        <div key={p.dataKey || p.name} className="flex items-center gap-2 text-xs">
+          <span className="w-2 h-2 rounded-full" style={{ background: p.color || p.fill }} />
           <span className="text-white/70">{p.dataKey || p.name}:</span>
           <span className="font-bold text-white">{p.value}%</span>
         </div>
@@ -46,16 +44,18 @@ export default function AnalyticsOverview({ deptFilter, onSetDeptFilter, onTabCh
   const loadData = async () => {
     try {
       setLoading(true)
+      setError(null)
       const [summaryRes, suggestionRes] = await Promise.allSettled([
         hodService.getAnalyticsSummary(),
         hodService.getAiSuggestion()
       ])
+      
       if (summaryRes.status === 'fulfilled') {
         setSummaryData(summaryRes.value)
       } else {
-        console.warn('Analytics summary failed:', summaryRes.reason?.message)
-        setSummaryData({ dept_summary: [], score_trend: [] })
+        throw new Error(summaryRes.reason?.message || 'Failed to load department analytics summary')
       }
+      
       if (suggestionRes.status === 'fulfilled') {
         setAiSuggestion(suggestionRes.value)
       }
@@ -105,7 +105,7 @@ export default function AnalyticsOverview({ deptFilter, onSetDeptFilter, onTabCh
     const atRisk = activeSummary.reduce((s, d) => s + (d.at_risk || 0), 0)
 
     const trendData = deptFilter !== 'All'
-      ? (Array.isArray(summaryData.score_trend) ? summaryData.score_trend : []).map(w => ({ week: w.week, [deptFilter]: w[deptFilter] }))
+      ? (Array.isArray(summaryData.score_trend) ? summaryData.score_trend : []).map(w => ({ week: w.week, [deptFilter]: w[deptFilter] || 0 }))
       : (Array.isArray(summaryData.score_trend) ? summaryData.score_trend : [])
 
     return { totalStudents, avgScore, avgEngagement, atRisk, activeSummary, trendData }
@@ -135,12 +135,12 @@ export default function AnalyticsOverview({ deptFilter, onSetDeptFilter, onTabCh
 
     // 2. Improvement Alert / Top Department
     if (summaryData?.dept_summary?.length) {
-      const highestScoreDept = [...summaryData.dept_summary].sort((a, b) => b.avg_score - a.avg_score)[0]
+      const highestScoreDept = [...summaryData.dept_summary].sort((a, b) => (b.avg_score || 0) - (a.avg_score || 0))[0]
       list.push({
         type: 'improvement',
         icon: '📈',
         title: 'Top Department',
-        text: `${highestScoreDept.dept} is the leading department with an average score of ${highestScoreDept.avg_score}% and student engagement of ${highestScoreDept.engagement}%.`,
+        text: `${highestScoreDept.dept} is the leading department with an average score of ${highestScoreDept.avg_score || 0}% and student engagement of ${highestScoreDept.engagement || 0}%.`,
         action: `Filter by ${highestScoreDept.dept}`,
         onClick: () => onSetDeptFilter(highestScoreDept.dept),
       })
@@ -242,44 +242,52 @@ export default function AnalyticsOverview({ deptFilter, onSetDeptFilter, onTabCh
               </tr>
             </thead>
             <tbody>
-              {(summaryData.dept_summary || []).map(d => {
-                const cfg = DEPT_CONFIG[d.dept] || { color: 'gray', hex: '#6b7280', bg: 'bg-gray-500/10', border: 'border-gray-500/20', text: 'text-gray-400', header: 'bg-gray-500/15 border-gray-500/25' }
-                const isActive = deptFilter === d.dept
-                return (
-                  <tr key={d.dept}
-                    onClick={() => onSetDeptFilter(isActive ? 'All' : d.dept)}
-                    className={`border-b border-white/5 cursor-pointer transition-all ${isActive ? 'bg-violet-500/10' : 'hover:bg-white/[0.03]'}`}>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2.5 h-2.5 rounded-full shrink-0`} style={{ background: cfg.hex }} />
-                        <span className={`font-bold ${cfg.text}`}>{d.dept}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-white/80">{d.students}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                          <div className="h-full bg-violet-500 rounded-full" style={{ width: `${d.avg_score}%` }} />
+              {(summaryData.dept_summary || []).length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-white/30 text-xs italic">
+                    No department data available.
+                  </td>
+                </tr>
+              ) : (
+                (summaryData.dept_summary || []).map(d => {
+                  const cfg = DEPT_CONFIG[d.dept] || { color: 'gray', hex: '#6b7280', bg: 'bg-gray-500/10', border: 'border-gray-500/20', text: 'text-gray-400', header: 'bg-gray-500/15 border-gray-500/25' }
+                  const isActive = deptFilter === d.dept
+                  return (
+                    <tr key={d.dept}
+                      onClick={() => onSetDeptFilter(isActive ? 'All' : d.dept)}
+                      className={`border-b border-white/5 cursor-pointer transition-all ${isActive ? 'bg-violet-500/10' : 'hover:bg-white/[0.03]'}`}>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0`} style={{ background: cfg.hex }} />
+                          <span className={`font-bold ${cfg.text}`}>{d.dept}</span>
                         </div>
-                        <span className="text-white font-semibold">{d.avg_score}%</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className={`text-xs font-bold px-2 py-1 rounded-lg ${d.engagement >= 70 ? 'bg-green-500/10 text-green-400' : 'bg-amber-500/10 text-amber-400'}`}>
-                        {d.engagement}%
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {d.at_risk > 0 && <span className="text-xs font-bold text-red-400 bg-red-500/10 px-2 py-1 rounded-lg">{d.at_risk}</span>}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <button className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1 transition">
-                        View <ChevronRight className="w-3 h-3" />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
+                      </td>
+                      <td className="px-5 py-3.5 text-white/80">{d.students || 0}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-full bg-violet-500 rounded-full" style={{ width: `${d.avg_score || 0}%` }} />
+                          </div>
+                          <span className="text-white font-semibold">{d.avg_score || 0}%</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-xs font-bold px-2 py-1 rounded-lg ${(d.engagement || 0) >= 70 ? 'bg-green-500/10 text-green-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                          {d.engagement || 0}%
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {(d.at_risk || 0) > 0 && <span className="text-xs font-bold text-red-400 bg-red-500/10 px-2 py-1 rounded-lg">{d.at_risk}</span>}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <button className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1 transition">
+                          View <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>

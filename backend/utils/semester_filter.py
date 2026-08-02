@@ -12,9 +12,6 @@ def apply_semester_filter(query, model, current_user: User):
     if current_user.role == "student":
         if current_user.course_id:
             query = query.filter(model.course_id == current_user.course_id)
-        if current_user.current_semester:
-            query = query.filter(
-                (model.semester_number == current_user.current_semester) |
-                (model.semester_number == None)   # items with no semester = visible to all
-            )
+        query = query.filter(model.semester_number == current_user.current_semester)
+        query = query.filter(model.semester_number.is_not(None))
     return query

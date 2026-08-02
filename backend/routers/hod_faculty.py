@@ -26,10 +26,14 @@ async def get_all_faculty(
 ):
     import asyncio
     from sqlalchemy.orm import selectinload
-    # 1. Fetch all active faculty with their assignments and subjects pre-loaded
+    # 1. Fetch all active faculty with their assignments and subjects pre-loaded (filtered by department)
     stmt = select(User).options(
         selectinload(User.faculty_assignments).selectinload(FacultySubjectAssignment.subject)
-    ).where(User.role == "faculty", User.is_active == True)
+    ).where(
+        User.role == "faculty",
+        User.is_active == True,
+        User.department_id == current_user.department_id
+    )
 
     # Apply pagination if provided (backward compatible)
     if page is not None and limit is not None:
@@ -37,8 +41,16 @@ async def get_all_faculty(
         limit = min(max(1, limit), 200)
         stmt = stmt.offset((page - 1) * limit).limit(limit)
     
-    # 2. Bulk fetch lecture counts from Timetable grouped by faculty_id
-    tt_stmt = select(Timetable.faculty_id, func.count(Timetable.id)).group_by(Timetable.faculty_id)
+    # 2. Bulk fetch lecture counts from Timetable grouped by faculty_id (filtered by department)
+    tt_stmt = select(
+        Timetable.faculty_id, func.count(Timetable.id)
+    ).join(
+        Subject, Timetable.subject_id == Subject.id
+    ).where(
+        Subject.department_id == current_user.department_id
+    ).group_by(
+        Timetable.faculty_id
+    )
     
     # Execute in parallel
     res, tt_res = await asyncio.gather(

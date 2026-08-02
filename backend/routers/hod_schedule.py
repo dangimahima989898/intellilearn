@@ -100,7 +100,8 @@ async def get_timetable(
             "semester": s.semester_number,
             "status": s.status,
             "date": s.date.isoformat() if s.date else None,
-            "course_id": str(s.course_id) if s.course_id else None
+            "course_id": str(s.course_id) if s.course_id else None,
+            "subject_type": s.subject.icon if s.subject else "Theory"
         })
 
     return result

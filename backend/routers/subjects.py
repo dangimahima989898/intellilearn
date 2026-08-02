@@ -101,10 +101,29 @@ def get_subjects(
         query = apply_semester_filter(query, Subject, current_user)
     elif current_user.role == "faculty":
         query = query.join(FacultySubjectAssignment).filter(FacultySubjectAssignment.faculty_id == current_user.id)
+    elif current_user.role == "hod":
+        query = query.filter(Subject.department_id == current_user.department_id)
+        if course_id:
+            try:
+                course_uuid = uuid.UUID(course_id)
+                query = query.filter(Subject.course_id == course_uuid)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid course_id format")
+        if semester:
+            query = query.filter(Subject.semester_number == semester)
     else:
         if course_id:
             try:
-                query = query.filter(Subject.course_id == uuid.UUID(course_id))
+                course_uuid = uuid.UUID(course_id)
+                from models.course import Course as DbCourse
+                course_obj = db.query(DbCourse).filter(DbCourse.id == course_uuid).first()
+                if course_obj and course_obj.department_id:
+                    query = query.filter(
+                        (Subject.course_id == course_uuid) |
+                        (Subject.department_id == course_obj.department_id)
+                    )
+                else:
+                    query = query.filter(Subject.course_id == course_uuid)
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid course_id format")
         if semester:
@@ -119,6 +138,15 @@ def get_subjects(
     
     notes_counts = {r[0]: r[1] for r in db.query(Note.subject_id, func.count(Note.id))
                     .filter(Note.subject_id.in_(subject_ids)).group_by(Note.subject_id).all()}
+                    
+    # Also fetch approved summaries count
+    from models.uploaded_note import UploadedNote
+    from models.note_summary import NoteSummary
+    approved_summaries_counts = {r[0]: r[1] for r in db.query(UploadedNote.subject_id, func.count(NoteSummary.id))
+                                 .join(NoteSummary, NoteSummary.note_id == UploadedNote.id)
+                                 .filter(UploadedNote.subject_id.in_(subject_ids), NoteSummary.status == "APPROVED")
+                                 .group_by(UploadedNote.subject_id).all()}
+                                 
     questions_counts = {r[0]: r[1] for r in db.query(Question.subject_id, func.count(Question.id))
                         .filter(Question.subject_id.in_(subject_ids)).group_by(Question.subject_id).all()}
     chunks_counts = {r[0]: r[1] for r in db.query(ContentChunk.subject_id, func.count(ContentChunk.id))
@@ -126,9 +154,10 @@ def get_subjects(
     
     result = []
     for s in subjects:
+        total_notes = notes_counts.get(s.id, 0) + approved_summaries_counts.get(s.id, 0)
         result.append({
             **serialize_subject(s),
-            "notes_count": notes_counts.get(s.id, 0),
+            "notes_count": total_notes,
             "questions_count": questions_counts.get(s.id, 0),
             "chunks_count": chunks_counts.get(s.id, 0)
         })
@@ -382,3 +411,214 @@ def perform_permanent_cascade_delete(id: uuid.UUID, db: Session):
     # Delete the subject itself
     db.delete(subject)
     db.commit()
+
+# ── Faculty Topic Management Endpoints ─────────────────────────────────────
+from pydantic import BaseModel
+import json
+from typing import List, Optional
+
+class TopicsUpdate(BaseModel):
+    topics: List[str]
+
+class TopicCreate(BaseModel):
+    name: str
+
+class TopicUpdate(BaseModel):
+    name: str
+
+class TopicOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    subject_id: uuid.UUID
+    semester_id: Optional[uuid.UUID] = None
+
+    class Config:
+        from_attributes = True
+
+def check_topics_management_permission(subject_id: uuid.UUID, db: Session, current_user):
+    if current_user.role in ["super_admin", "hod", "admin"]:
+        return True
+    if current_user.role == "faculty":
+        from models.faculty_subject_assignment import FacultySubjectAssignment
+        assignment = db.query(FacultySubjectAssignment).filter(
+            FacultySubjectAssignment.faculty_id == current_user.id,
+            FacultySubjectAssignment.subject_id == subject_id
+        ).first()
+        if assignment:
+            return True
+    raise HTTPException(
+        status_code=403,
+        detail="Access denied. You are not authorized to manage topics for this subject."
+    )
+
+@router.get("/{id}/topics", response_model=List[str])
+def get_subject_topics(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    subject = db.query(Subject).filter(Subject.id == id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    return subject.get_topics()
+
+@router.post("/{id}/topics", response_model=List[str])
+def update_subject_topics(
+    id: uuid.UUID,
+    payload: TopicsUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    subject = db.query(Subject).filter(Subject.id == id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    
+    check_topics_management_permission(id, db, current_user)
+    
+    subject.set_topics(payload.topics)
+    db.commit()
+    db.refresh(subject)
+    return subject.get_topics()
+
+@router.post("/{id}/topics/add", response_model=TopicOut)
+def add_subject_topic(
+    id: uuid.UUID,
+    payload: TopicCreate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    subject = db.query(Subject).filter(Subject.id == id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    
+    check_topics_management_permission(id, db, current_user)
+    
+    from models.topic import Topic
+    new_topic = Topic(
+        name=payload.name.strip(),
+        subject_id=subject.id,
+        semester_id=subject.semester_id
+    )
+    db.add(new_topic)
+    db.commit()
+    db.refresh(new_topic)
+    return new_topic
+
+@router.put("/{id}/topics/{topic_id}", response_model=TopicOut)
+def update_subject_topic(
+    id: uuid.UUID,
+    topic_id: uuid.UUID,
+    payload: TopicUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    subject = db.query(Subject).filter(Subject.id == id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    
+    check_topics_management_permission(id, db, current_user)
+    
+    from models.topic import Topic
+    topic = db.query(Topic).filter(Topic.id == topic_id, Topic.subject_id == id).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    
+    topic.name = payload.name.strip()
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+@router.delete("/{id}/topics/{topic_id}")
+def delete_subject_topic(
+    id: uuid.UUID,
+    topic_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    subject = db.query(Subject).filter(Subject.id == id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    
+    check_topics_management_permission(id, db, current_user)
+    
+    from models.topic import Topic
+    topic = db.query(Topic).filter(Topic.id == topic_id, Topic.subject_id == id).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    
+    db.delete(topic)
+    db.commit()
+    return {"message": "Topic deleted successfully"}
+
+
+@router.post("/{id}/topics/upload-syllabus", response_model=List[str])
+async def upload_subject_syllabus_topics(
+    id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    subject = db.query(Subject).filter(Subject.id == id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    
+    check_topics_management_permission(id, db, current_user)
+    
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext != '.pdf':
+        raise HTTPException(status_code=400, detail="Only PDF syllabus uploads are allowed")
+        
+    text = ""
+    try:
+        from PyPDF2 import PdfReader
+        import io
+        contents = await file.read()
+        reader = PdfReader(io.BytesIO(contents))
+        text = " ".join([page.extract_text() or "" for page in reader.pages])
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Failed to read PDF: {str(e)}")
+        
+    text = text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Could not extract any text from the PDF syllabus.")
+
+    from utils.llm_client import get_llm_response
+    prompt = f"""You are an academic curriculum parser. Extract the main syllabus topics/chapters/units from the following syllabus text as a clean list of topic names.
+Return ONLY a valid JSON list of strings, e.g. ["Arrays", "Linked Lists", "Trees", "Sorting", "Stack", "Queue"].
+Do not include unit numbers or headers like "Unit 1" in the topic strings, just the topic names.
+Keep each topic name concise (2-5 words).
+Do not include any explanation or markdown formatting. The response must start with [ and end with ].
+
+Syllabus text:
+{text[:8000]}"""
+
+    try:
+        raw_response = await get_llm_response(
+            messages=[{"role": "user", "content": "Extract topics now."}],
+            system_prompt=prompt,
+            max_tokens=800
+        )
+        cleaned_res = raw_response.strip()
+        if cleaned_res.startswith("```"):
+            import re
+            cleaned_res = re.sub(r"^```(?:json)?", "", cleaned_res, flags=re.IGNORECASE)
+            cleaned_res = re.sub(r"```$", "", cleaned_res).strip()
+        
+        start_idx = cleaned_res.find("[")
+        end_idx = cleaned_res.rfind("]")
+        if start_idx != -1 and end_idx != -1:
+            cleaned_res = cleaned_res[start_idx:end_idx+1]
+            
+        topics = json.loads(cleaned_res)
+        if not isinstance(topics, list):
+            raise ValueError("Parsed JSON is not a list")
+            
+        topics = [str(t).strip() for t in topics if str(t).strip()]
+        
+        subject.set_topics(topics)
+        db.commit()
+        db.refresh(subject)
+        return subject.get_topics()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to extract topics via AI: {str(e)}")
+

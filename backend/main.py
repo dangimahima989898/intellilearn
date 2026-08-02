@@ -64,10 +64,12 @@ app = FastAPI(
 )
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        os.getenv("FRONTEND_URL", "http://localhost:5173"),
+        FRONTEND_URL,
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5175",
@@ -75,7 +77,9 @@ app.add_middleware(
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
         "http://localhost:3000",
-        "https://your-vercel-app.vercel.app" # placeholder for actual
+        # Hugging Face Spaces — the app serves frontend + backend on the same origin,
+        # so the Space URL itself is both the frontend and backend URL.
+        "https://*.hf.space",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -142,18 +146,105 @@ app.include_router(rag_router.router)
 def startup_event():
     from routers.subjects import purge_expired_subjects
     from utils.exam_reminder_scheduler import start_exam_reminder_scheduler
+    from database import sync_engine
+    from sqlalchemy import func
+    import json
+    
+    # Ensure all tables are created
+    Base.metadata.create_all(bind=sync_engine)
+    
     db = SessionLocal()
     try:
+        try:
+            db.execute(text("ALTER TABLE quiz_answers ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"))
+            db.commit()
+            logger.info("Checked/Added created_at column to quiz_answers table successfully.")
+        except Exception as alter_ex:
+            db.rollback()
+            logger.error(f"Could not run ALTER TABLE to add created_at: {alter_ex}")
+            
         purge_expired_subjects(db)
         logger.info("Purged expired archived subjects successfully on startup.")
+        
+        # 1. Migrate JSON topics_list to the topics table
+        from models.subject import Subject
+        from models.topic import Topic
+        
+        subjects = db.query(Subject).all()
+        for sub in subjects:
+            existing_db_topics = db.query(Topic).filter(Topic.subject_id == sub.id).count()
+            if existing_db_topics == 0 and sub.topics_list:
+                try:
+                    legacy_topics = json.loads(sub.topics_list)
+                    if isinstance(legacy_topics, list):
+                        for name in legacy_topics:
+                            if name.strip():
+                                new_t = Topic(
+                                    name=name.strip(),
+                                    subject_id=sub.id,
+                                    semester_id=sub.semester_id
+                                )
+                                db.add(new_t)
+                        db.commit()
+                        logger.info(f"Migrated legacy topics for subject: {sub.code}")
+                except Exception as ex:
+                    db.rollback()
+                    logger.error(f"Error migrating legacy topics for {sub.code}: {ex}")
+        
+        # 2. Seed default MCA subjects & topics if they do not exist in topics table
+        from routers.chatbot import SUBJECTS as DEFAULT_SUBJECTS
+        for ds in DEFAULT_SUBJECTS:
+            sub = db.query(Subject).filter(
+                (func.lower(Subject.code) == ds["code"].lower()) |
+                (func.lower(Subject.name) == ds["name"].lower()) |
+                (func.lower(Subject.name).contains(ds["code"].lower())) |
+                (func.lower(Subject.name).contains(ds["name"].lower())) |
+                (func.lower(Subject.code).contains(ds["code"].lower())) |
+                (func.lower(ds["name"]).contains(func.lower(Subject.name)))
+            ).first()
+            if sub:
+                t_count = db.query(Topic).filter(Topic.subject_id == sub.id).count()
+                if t_count == 0:
+                    for name in ds["topics"]:
+                        new_t = Topic(
+                            name=name,
+                            subject_id=sub.id,
+                            semester_id=sub.semester_id
+                        )
+                        db.add(new_t)
+                    db.commit()
+                    logger.info(f"Seeded default topics for existing subject: {sub.code} ({sub.name})")
+        
+        # 3. Synchronize departments and courses (ensure every active department has a course record)
+        from models.department import Department
+        from models.course import Course
+        import uuid
+        
+        all_departments = db.query(Department).all()
+        for dept in all_departments:
+            existing_course = db.query(Course).filter(Course.department_id == dept.department_id).first()
+            if not existing_course:
+                logger.info(f"Sync: Creating course for department {dept.department_name} ({dept.department_code})")
+                new_course = Course(
+                    id=uuid.uuid4(),
+                    name=dept.department_name,
+                    code=dept.department_code,
+                    total_semesters=dept.total_semesters,
+                    duration_years=(dept.total_semesters + 1) // 2,
+                    department_id=dept.department_id,
+                    is_active=(dept.status == "Active")
+                )
+                db.add(new_course)
+        db.commit()
     except Exception as e:
-        logger.error(f"Error purging expired archived subjects on startup: {e}")
+        logger.error(f"Error during startup initialization/migration: {e}")
     finally:
         db.close()
 
     # Start the automated exam reminder background scheduler
     start_exam_reminder_scheduler()
     logger.info("Exam reminder scheduler started successfully.")
+
 
 
 # ── Core routes ────────────────────────────────────────────────────────────────

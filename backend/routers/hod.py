@@ -35,17 +35,31 @@ def get_hod_dashboard_stats(
     - Today's scheduled classes
     - Total active students
     """
+    dept_id = current_user.department_id
+
     # Pending approvals
     pending_approvals = db.query(StudentEnrollment)\
-        .filter(StudentEnrollment.approval_status == "pending").count()
+        .join(Course, StudentEnrollment.course_id == Course.id)\
+        .filter(
+            StudentEnrollment.approval_status == "pending",
+            Course.department_id == dept_id
+        ).count()
 
     # Pending leaves
     pending_leaves = db.query(FacultyLeaveRequest)\
-        .filter(FacultyLeaveRequest.status == "pending").count()
+        .join(User, FacultyLeaveRequest.faculty_id == User.id)\
+        .filter(
+            FacultyLeaveRequest.status == "pending",
+            User.department_id == dept_id
+        ).count()
 
     # Flagged AI answers pending
     flagged_pending = db.query(FlaggedAnswer)\
-        .filter(FlaggedAnswer.status == "pending").count()
+        .join(User, FlaggedAnswer.student_id == User.id)\
+        .filter(
+            FlaggedAnswer.status == "pending",
+            User.department_id == dept_id
+        ).count()
 
     # Subjects with no faculty assignment
     assigned_subject_ids = db.query(
@@ -54,6 +68,7 @@ def get_hod_dashboard_stats(
 
     unassigned_subjects = db.query(Subject).filter(
         Subject.is_archived == False,
+        Subject.department_id == dept_id,
         Subject.id.notin_(
             db.query(FacultySubjectAssignment.subject_id)
         )
@@ -63,26 +78,37 @@ def get_hod_dashboard_stats(
     today_day = datetime.now().strftime("%A")
     VALID_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
     if today_day in VALID_DAYS:
-        todays_classes = db.query(Timetable).filter(
-            Timetable.day_of_week == today_day
-        ).count()
+        todays_classes = db.query(Timetable)\
+            .join(Subject, Timetable.subject_id == Subject.id)\
+            .filter(
+                Timetable.day_of_week == today_day,
+                Subject.department_id == dept_id
+            ).count()
     else:
         todays_classes = 0
 
-    # Total active students
+    # Total active students (approved)
     total_students = db.query(User).filter(
-        User.role == "student", User.is_active == True
+        User.role == "student",
+        User.is_active == True,
+        User.status == "approved",
+        User.department_id == dept_id
     ).count()
 
     # Total active faculty
     total_faculty = db.query(User).filter(
-        User.role == "faculty", User.is_active == True
+        User.role == "faculty",
+        User.is_active == True,
+        User.department_id == dept_id
     ).count()
 
     # Total subjects
-    total_subjects = db.query(Subject).filter(Subject.is_archived == False).count()
+    total_subjects = db.query(Subject).filter(
+        Subject.is_archived == False,
+        Subject.department_id == dept_id
+    ).count()
 
-    # Total departments
+    # Total departments (overall active count)
     total_departments = db.query(Department).filter(Department.status == "Active").count()
 
     return {

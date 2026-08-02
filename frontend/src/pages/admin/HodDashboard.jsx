@@ -328,7 +328,6 @@ export default function HodDashboard() {
                   {[
                     ['Department', 'Computer Science'],
                     ['HOD', hodName],
-                    ['Current Semester', 'Odd Semester 2026'],
                     ['Academic Session', yearFilter],
                   ].map(([label, value]) => (
                     <div key={label} style={{ display: 'flex', gap: 5, alignItems: 'center' }}>

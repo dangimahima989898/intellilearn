@@ -22,66 +22,150 @@ async def get_department_analytics_summary(
 ):
     """Department analytics with resilient sectioned queries."""
     import asyncio
+    from sqlalchemy import text
     today = date.today()
     eight_weeks_ago = datetime.utcnow() - timedelta(weeks=8)
+    dept_id = current_user.department_id
 
-    # Define all statements
+    # Define all statements filtered by HOD department_id
     stmt_quiz_acc = select(
         func.count(QuizAnswer.id).label("t"),
         func.sum(case((QuizAnswer.is_correct == True, 1), else_=0)).label("c")
+    ).join(
+        QuizAttempt, QuizAnswer.attempt_id == QuizAttempt.id
+    ).join(
+        User, QuizAttempt.student_id == User.id
+    ).where(
+        User.department_id == dept_id
     )
+
     stmt_challenges = select(func.count(DailyChallenge.id))
     stmt_challenge_subs = select(func.count(ChallengeSubmission.id))
+
     stmt_doubts = select(
         func.count(Doubt.id).label("tot"),
         func.sum(case((Doubt.is_resolved == True, 1), else_=0)).label("res")
+    ).join(
+        Subject, Doubt.subject_id == Subject.id
+    ).where(
+        Subject.department_id == dept_id
     )
+
     stmt_chat_stats = select(
         func.count(distinct(ChatLog.student_id)).label("chatters"),
         func.count(ChatLog.id).label("total_q")
+    ).join(
+        User, ChatLog.student_id == User.id
+    ).where(
+        User.department_id == dept_id
     )
+
     stmt_chat_trend = select(
         func.cast(ChatLog.created_at, Date).label("day"),
         func.count(ChatLog.id).label("count")
+    ).join(
+        User, ChatLog.student_id == User.id
     ).where(
-        func.cast(ChatLog.created_at, Date) >= today - timedelta(days=6)
+        and_(
+            func.cast(ChatLog.created_at, Date) >= today - timedelta(days=6),
+            User.department_id == dept_id
+        )
     ).group_by(
         func.cast(ChatLog.created_at, Date)
     )
+
     stmt_subj_quiz = select(
         QuizAttempt.subject_id,
         func.count(QuizAnswer.id).label("total"),
         func.sum(case((QuizAnswer.is_correct == True, 1), else_=0)).label("correct")
     ).join(
         QuizAnswer, QuizAnswer.attempt_id == QuizAttempt.id
+    ).join(
+        Subject, QuizAttempt.subject_id == Subject.id
+    ).where(
+        Subject.department_id == dept_id
     ).group_by(
         QuizAttempt.subject_id
     )
+
     stmt_active_depts = select(func.count(Department.id)).where(Department.status == "Active")
-    stmt_subjects = select(Subject.id, Subject.code, Subject.name, Subject.course_id).where(Subject.is_archived == False)
-    stmt_courses = select(Course.id, Course.code)
-    stmt_faculties = select(User.id, User.name, User.email).where(User.role == "faculty", User.is_active == True)
-    stmt_assignments = select(FacultySubjectAssignment.faculty_id, FacultySubjectAssignment.subject_id)
-    stmt_enrollments = select(StudentEnrollment.student_id, StudentEnrollment.course_id)
-    stmt_students = select(User.id, User.last_active_date).where(User.role == "student", User.is_active == True)
+
+    stmt_subjects = select(
+        Subject.id, Subject.code, Subject.name, Subject.course_id
+    ).join(
+        Semester, Subject.semester_id == Semester.id
+    ).where(
+        and_(
+            Subject.is_archived == False,
+            Subject.department_id == dept_id,
+            Semester.is_active == True
+        )
+    )
+
+    stmt_courses = select(Course.id, Course.code).where(
+        Course.department_id == dept_id
+    )
+
+    stmt_faculties = select(User.id, User.name, User.email).where(
+        User.role == "faculty",
+        User.is_active == True,
+        User.department_id == dept_id
+    )
+
+    stmt_assignments = select(
+        FacultySubjectAssignment.faculty_id,
+        FacultySubjectAssignment.subject_id
+    ).join(
+        Subject, FacultySubjectAssignment.subject_id == Subject.id
+    ).where(
+        Subject.department_id == dept_id
+    )
+
+    stmt_enrollments = select(
+        StudentEnrollment.student_id,
+        StudentEnrollment.course_id
+    ).join(
+        User, StudentEnrollment.student_id == User.id
+    ).where(
+        User.department_id == dept_id
+    )
+
+    stmt_students = select(User.id, User.last_active_date).where(
+        User.role == "student",
+        User.is_active == True,
+        User.department_id == dept_id
+    )
+
     stmt_student_avg = select(
         QuizAttempt.student_id,
         func.avg(QuizAttempt.score).label("avg_score")
+    ).join(
+        User, QuizAttempt.student_id == User.id
     ).where(
-        QuizAttempt.score.isnot(None)
+        and_(
+            QuizAttempt.score.isnot(None),
+            User.department_id == dept_id
+        )
     ).group_by(
         QuizAttempt.student_id
     )
+
     stmt_course_avg = select(
         StudentEnrollment.course_id,
         func.avg(QuizAttempt.score).label("avg_score")
     ).join(
         QuizAttempt, QuizAttempt.student_id == StudentEnrollment.student_id
+    ).join(
+        Course, StudentEnrollment.course_id == Course.id
     ).where(
-        QuizAttempt.score.isnot(None)
+        and_(
+            QuizAttempt.score.isnot(None),
+            Course.department_id == dept_id
+        )
     ).group_by(
         StudentEnrollment.course_id
     )
+
     stmt_attempts_trend = select(
         QuizAttempt.started_at,
         QuizAttempt.score,
@@ -96,9 +180,27 @@ async def get_department_analytics_summary(
     ).where(
         and_(
             QuizAttempt.started_at >= eight_weeks_ago,
-            QuizAttempt.score.isnot(None)
+            QuizAttempt.score.isnot(None),
+            Course.department_id == dept_id
         )
     )
+
+    stmt_attendance = text("""
+        SELECT 
+            s.course_id,
+            SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present,
+            COUNT(*) as total
+        FROM attendance a
+        JOIN subjects s ON a.subject_id = s.id
+        JOIN semesters sem ON s.semester_id = sem.id
+        JOIN users u ON a.student_id = u.id
+        WHERE s.department_id = :dept_id
+          AND sem.is_active = True
+          AND u.role = 'student'
+          AND u.is_active = True
+          AND u.status = 'approved'
+        GROUP BY s.course_id
+    """)
 
     # Put all tasks in a list and execute concurrently
     tasks = [
@@ -118,7 +220,8 @@ async def get_department_analytics_summary(
         db.execute(stmt_students),      # 13
         db.execute(stmt_student_avg),   # 14
         db.execute(stmt_course_avg),    # 15
-        db.execute(stmt_attempts_trend) # 16
+        db.execute(stmt_attempts_trend),# 16
+        db.execute(stmt_attendance, {"dept_id": dept_id}) # 17
     ]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -235,6 +338,7 @@ async def get_department_analytics_summary(
     res_enrollments = get_result(12)
     res_student_avg = get_result(14)
     res_course_avg = get_result(15)
+    res_attendance = get_result(17)
 
     try:
         enrollments = list(res_enrollments.all()) if res_enrollments else []
@@ -250,6 +354,16 @@ async def get_department_analytics_summary(
         course_students = {}
         student_avg_map = {}
         course_avg_scores = {}
+
+    course_attendance = {}
+    if res_attendance:
+        try:
+            for r_att in res_attendance.all():
+                pres = r_att.present or 0
+                tot = r_att.total or 0
+                course_attendance[r_att.course_id] = round((pres / tot) * 100) if tot > 0 else 0
+        except Exception:
+            pass
 
     # 7) Score trend (8 weeks of quiz attempts)
     res_attempts_trend = get_result(16)
@@ -302,11 +416,13 @@ async def get_department_analytics_summary(
         sc = len(sl)
         av = course_avg_scores.get(c.id)
         active7 = sum(1 for s in sl if s.last_active_date and s.last_active_date >= cutoff)
+        att_rate = course_attendance.get(c.id, 0)
         dept_summary.append({
             "dept": c.code, "students": sc,
             "avg_score": round(float(av)) if av else 0,
             "engagement": round(active7 / sc * 100) if sc else 0,
-            "at_risk": sum(1 for s in sl if (student_avg_map.get(s.id) or 999) < 50)
+            "at_risk": sum(1 for s in sl if (student_avg_map.get(s.id) or 999) < 50),
+            "attendance": att_rate
         })
 
     score_trend = []

@@ -61,6 +61,11 @@ export default function QuestionGeneratorPage() {
   }, [])
 
   const handleSelectSubject = (sub) => {
+    const hasMaterials = sub.notes_count > 0 || sub.chunks_count > 0;
+    if (!hasMaterials) {
+      toast.error(`Cannot select ${sub.name}: Study materials or topics are missing.`);
+      return;
+    }
     // Immediately clear topics to prevent stale loading state
     setAvailableTopics({})
     setTopic("")
@@ -101,6 +106,12 @@ export default function QuestionGeneratorPage() {
   const handleGenerate = async () => {
     if (!selectedSubject) {
       toast.error("Please select a subject first.")
+      setStep(1)
+      return
+    }
+    const hasMaterials = selectedSubject.notes_count > 0 || selectedSubject.chunks_count > 0;
+    if (!hasMaterials) {
+      toast.error("Study materials or topics are missing for this subject.")
       setStep(1)
       return
     }
@@ -271,9 +282,10 @@ export default function QuestionGeneratorPage() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
                   {subjects.map((sub) => {
-                    const detail = SUBJECT_DETAILS[sub.code] || { icon: BookOpen, color: "from-blue-600 to-indigo-600", accent: "#3B82F6", textAccent: "text-blue-400" }
+                    const detail = SUBJECT_DETAILS[sub.code] || { icon: BookOpen, color: "from-blue-600 to-indigo-650", accent: "#3B82F6", textAccent: "text-blue-400" }
                     const Icon = detail.icon
                     const isSel = selectedSubject?.code === sub.code
+                    const hasMaterials = sub.notes_count > 0 || sub.chunks_count > 0;
 
                     return (
                       <button
@@ -283,17 +295,24 @@ export default function QuestionGeneratorPage() {
                           isSel 
                             ? "border-2 border-[#3B82F6] bg-[#3B82F6]/10 scale-105 shadow-xl shadow-blue-500/10" 
                             : isLight ? "bg-white border-slate-200 hover:border-blue-300" : "bg-white/5 border-white/10 hover:border-white/20"
-                        }`}
+                        } ${!hasMaterials ? "opacity-60" : ""}`}
                       >
                         <div>
-                          <div className={`p-3 rounded-xl inline-block bg-white/5 text-white mb-4 group-hover:scale-110 transition-transform`} style={{ color: detail.accent }}>
-                            <Icon className="w-6 h-6" />
+                          <div className="flex justify-between items-start mb-2">
+                            <div className={`p-3 rounded-xl inline-block bg-white/5 text-white group-hover:scale-110 transition-transform`} style={{ color: detail.accent }}>
+                              <Icon className="w-6 h-6" />
+                            </div>
+                            {!hasMaterials && (
+                              <span className="text-[8px] font-black bg-rose-500/10 text-rose-500 border border-rose-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0" title={`Notes: ${sub.notes_count || 0}, Chunks: ${sub.chunks_count || 0}, Topics: ${sub.topics_list?.length || 0}`}>
+                                Missing Content
+                              </span>
+                            )}
                           </div>
                           <h3 className={`text-md font-bold mb-1 line-clamp-1 ${isLight ? 'text-slate-800' : 'text-white'}`}>{sub.name}</h3>
                           <span className={`text-[10px] font-bold uppercase tracking-wider ${detail.textAccent}`}>{sub.code}</span>
                         </div>
                         <p className={`text-xs mt-3.5 font-medium ${isLight ? 'text-slate-400' : 'text-white/40'}`}>
-                          {sub.topics?.length || 4} topics listed
+                          {sub.topics_list?.length || 0} topics listed
                         </p>
                       </button>
                     )
@@ -442,9 +461,9 @@ export default function QuestionGeneratorPage() {
                     max="10"
                     value={count}
                     onChange={(e) => setCount(parseInt(e.target.value))}
-                    className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#8B5CF6]"
+                    className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-[#8B5CF6] ${isLight ? 'bg-slate-200' : 'bg-white/10'}`}
                   />
-                  <div className="flex justify-between text-[10px] text-white/30 font-bold px-1 mt-1.5 uppercase tracking-wider">
+                  <div className={`flex justify-between text-[10px] font-bold px-1 mt-1.5 uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-white/30'}`}>
                     <span>1 question</span>
                     <span>5</span>
                     <span>10 questions</span>

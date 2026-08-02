@@ -45,7 +45,7 @@ export default function ScheduleClassModal({
       try {
         const [cDataRes, fRes] = await Promise.allSettled([
           courseService.getCourses(),
-          api.get('/api/v1/hod/faculty')
+          api.get('/api/v1/hod/faculty/all')
         ])
         setCourses(cDataRes.status === 'fulfilled' ? (cDataRes.value || []) : [])
         setFacultyList(fRes.status === 'fulfilled' ? (fRes.value.data || []) : [])
@@ -109,7 +109,13 @@ export default function ScheduleClassModal({
       setSubjectsLoading(true)
       try {
         const data = await adminService.getSubjects(courseId, semesterNumber || null)
-        setSubjects(data || [])
+        const list = data || []
+        setSubjects(list)
+        // Reset selected subject if it's no longer valid for this course/semester
+        if (subjectId && !list.some(s => s.id === subjectId)) {
+          setSubjectId('')
+          setFacultyId('')
+        }
       } catch (err) {
         console.error('Failed to fetch subjects:', err)
         setSubjects([])
@@ -117,10 +123,10 @@ export default function ScheduleClassModal({
         setSubjectsLoading(false)
       }
     }
-    if (isOpen && courseId) {
+    if (isOpen) {
       loadSubjects()
     }
-  }, [courseId, semesterNumber, isOpen])
+  }, [courseId, semesterNumber, isOpen, subjectId])
 
   // Auto set end time to start time + 1 hour when start time changes
   const handleStartTimeChange = (val) => {
@@ -233,15 +239,24 @@ export default function ScheduleClassModal({
 
       // Conflict 3: Semester clash (students have another class)
       if (courseId && s.course_id === courseId && semesterNumber && s.semester_number === Number(semesterNumber)) {
-        results.push({
-          type: 'semester',
-          message: `📚 Cohort Overlap: Semester ${semesterNumber} students already have "${s.subject_name}" scheduled at this time.`
-        })
+        const currentSubj = subjects.find(sub => sub.id === subjectId)
+        const currentSubjType = currentSubj?.subject_type || currentSubj?.icon || 'Theory'
+        const existingSubjType = s.subject_type || 'Theory'
+
+        if (currentSubjType !== 'Elective' && existingSubjType !== 'Elective') {
+          // Only conflict if they are in the same section, or at least one is "all sections" (falsy)
+          if (!section || !s.section || section === s.section) {
+            results.push({
+              type: 'semester',
+              message: `📚 Cohort Overlap: Semester ${semesterNumber}${section ? ` Section ${section}` : ''} students already have "${s.subject_name}" scheduled at this time. (Note: If these are parallel electives, please change their Subject Type to 'Elective' in the Subjects Page to allow parallel scheduling).`
+            })
+          }
+        }
       }
     })
 
     return results
-  }, [isOpen, courseId, semesterNumber, subjectId, facultyId, dayOfWeek, startTime, endTime, room, classType, allSlots, editSlot, facultyList, repeatType, date])
+  }, [isOpen, courseId, semesterNumber, subjectId, facultyId, dayOfWeek, startTime, endTime, room, classType, allSlots, editSlot, facultyList, repeatType, date, subjects])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -251,6 +266,11 @@ export default function ScheduleClassModal({
     
     if (timeToMins(startTime) >= timeToMins(endTime)) {
       toast.error('End time must be strictly after start time')
+      return
+    }
+
+    if (repeatType === 'One-time' && !date) {
+      toast.error('Date is required for one-time slots')
       return
     }
 
@@ -278,10 +298,9 @@ export default function ScheduleClassModal({
         room: room || null,
         course_id: courseId,
         semester_number: parseInt(semesterNumber),
-        section: section || null,
         is_lab: isLab,
         status: (editSlot && editSlot.id) ? editSlot.status : 'draft',
-        date: repeatType === 'One-time' ? date : null
+        date: (repeatType === 'One-time' && date) ? date : null
       }
 
       let res
@@ -302,7 +321,13 @@ export default function ScheduleClassModal({
       if (typeof detail === 'string') {
         errorMsg = detail
       } else if (Array.isArray(detail)) {
-        errorMsg = detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+        errorMsg = detail.map(d => {
+          if (d.msg === 'Input should be None') {
+            const field = d.loc && d.loc[d.loc.length - 1];
+            return `Field '${field}' must be empty or null.`;
+          }
+          return d.msg || JSON.stringify(d);
+        }).join(', ')
       } else if (detail && typeof detail === 'object') {
         errorMsg = JSON.stringify(detail)
       }

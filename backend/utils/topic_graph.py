@@ -62,12 +62,37 @@ TOPIC_GRAPH = {
     }
 }
 
-def get_next_suggestion(subject_code: str, current_topic: str) -> str:
+def get_next_suggestion(subject_code: str, current_topic: str, db = None) -> str:
     """
     Get a suggested next topic based on the current subject and topic.
     Returns a fallback topic if the specific relation or subject is not found.
     """
     sub_code = subject_code.upper()
+    
+    if db:
+        try:
+            from models.subject import Subject
+            from sqlalchemy import func
+            subject = db.query(Subject).filter(func.lower(Subject.code) == sub_code.lower()).first()
+            if subject:
+                db_topics = subject.get_topics()
+                if db_topics:
+                    # Try to find matching topic in the database topics list (case-insensitive lookup)
+                    matched_idx = -1
+                    for idx, topic in enumerate(db_topics):
+                        if topic.lower() in current_topic.lower() or current_topic.lower() in topic.lower():
+                            matched_idx = idx
+                            break
+                    if matched_idx != -1:
+                        if matched_idx < len(db_topics) - 1:
+                            return db_topics[matched_idx + 1]
+                        else:
+                            return "Revision & Self Assessment"
+                    # Default to first topic if no match
+                    return db_topics[0]
+        except Exception as e:
+            print(f"[Topic Graph] Failed to fetch dynamic topics: {e}")
+        
     if sub_code not in TOPIC_GRAPH:
         return "General Review"
         
@@ -86,3 +111,4 @@ def get_next_suggestion(subject_code: str, current_topic: str) -> str:
     # Default fallback: return first topic in graph if current_topic doesn't match
     keys = list(subject_graph.keys())
     return keys[0] if keys else "General Review"
+

@@ -13,7 +13,7 @@ from models.question import Question
 from models.subject import Subject
 from models.quiz_attempt import QuizAttempt
 from models.quiz_answer import QuizAnswer
-from utils.dependencies import require_student, require_admin, require_hod_or_admin
+from utils.dependencies import require_student, require_admin, require_hod_or_admin, require_role
 from utils.llm_client import get_llm_response
 from utils.adaptive_engine import AdaptiveEngine
 from schemas.adaptive_quiz import (
@@ -21,7 +21,7 @@ from schemas.adaptive_quiz import (
     QuizSubmitResponse, WeakChapter, QuestionResult, AnswerSubmit, QuizHistoryItem,
     SingleAnswerSubmit, SingleAnswerResponse, QuizReportResponse, WeakTopicDetail,
     ExplainRequest, ExplainResponse, FrequentlyWrongQuestion, AdminQuizAnalyticsResponse,
-    AdaptiveQuestionOut
+    AdaptiveQuestionOut, QuestionReviewItem
 )
 
 router = APIRouter(prefix="/adaptive-quiz", tags=["Adaptive Quiz"])
@@ -138,6 +138,12 @@ def get_topics_for_subject(
     db: Session = Depends(get_db),
     current_user = Depends(require_student)
 ):
+    subject = db.query(Subject).filter(Subject.id == subject_id).first()
+    if subject:
+        db_topics = subject.get_topics()
+        if db_topics:
+            return {"Syllabus Topics": db_topics}
+
     chunks = db.query(ContentChunk.topic_hint, ContentChunk.chunk_index).filter(
         ContentChunk.subject_id == subject_id,
         ContentChunk.topic_hint.isnot(None),
@@ -176,17 +182,20 @@ async def start_adaptive_quiz(
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
 
+    # Enforce current semester matches subject's semester
+    if current_user.current_semester != subject.semester_number:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. This subject belongs to a different semester."
+        )
+
     # 1. Determine topic mode
     topic_filter = (req.topic or "mixed").strip()
     is_mixed = topic_filter.lower() == "mixed"
 
-    # Get subject's syllabus topics from chatbot static config
-    from routers.chatbot import SUBJECTS as STATIC_SUBJECTS
-    static_meta = next(
-        (s for s in STATIC_SUBJECTS if s["code"].lower() == subject.code.lower() or s["name"].lower() == subject.name.lower()),
-        None
-    )
-    syllabus_topics = static_meta["topics"] if static_meta else []
+    # Get subject's syllabus topics from the database
+    syllabus_topics = subject.get_topics()
+
 
     # 2. Check question bank size
     q_query = db.query(Question).filter(Question.subject_id == subject.id)
@@ -197,7 +206,8 @@ async def start_adaptive_quiz(
     reason = f"Starting adaptive quiz {'across mixed syllabus topics' if is_mixed else f'on {topic_filter}'}."
 
     # 3. Populate question bank if too small
-    if q_count < 10:
+    target_count = req.num_questions or 10
+    if q_count < target_count:
         reason += " Populating question bank with AI-generated questions."
         import random as _random
         gen_topic = topic_filter
@@ -205,7 +215,7 @@ async def start_adaptive_quiz(
             gen_topic = _random.choice(syllabus_topics)
 
         prompt = AI_GENERATION_PROMPT.format(
-            count=15,
+            count=max(15, target_count + 5),
             topic=gen_topic,
             subject_name=subject.name
         )
@@ -251,7 +261,7 @@ async def start_adaptive_quiz(
         student_id=current_user.id,
         subject_id=subject.id,
         topic=topic_filter,
-        num_questions=10
+        num_questions=target_count
     )
     attempt.current_difficulty = difficulty
     db.commit()
@@ -274,12 +284,8 @@ def get_next_question(
     attempt = db.query(QuizAttempt).filter(QuizAttempt.id == session_id).first()
     available_topics = []
     if attempt and attempt.subject:
-        from routers.chatbot import SUBJECTS as STATIC_SUBJECTS
-        static_meta = next(
-            (s for s in STATIC_SUBJECTS if s["code"].lower() == attempt.subject.code.lower() or s["name"].lower() == attempt.subject.name.lower()),
-            None
-        )
-        available_topics = static_meta["topics"] if static_meta else []
+        available_topics = attempt.subject.get_topics()
+
 
     q = AdaptiveEngine.get_next_question(db, session_id, available_topics=available_topics)
     if not q:
@@ -371,7 +377,21 @@ def get_quiz_report(
         ),
         predicted_readiness=report["predicted_readiness"],
         readiness_label=report["readiness_label"],
-        subject_name=report["subject_name"]
+        subject_name=report["subject_name"],
+        questions_review=[
+            QuestionReviewItem(
+                id=uuid.UUID(str(q["id"])),
+                question_text=q["question_text"],
+                option_a=q["option_a"],
+                option_b=q["option_b"],
+                option_c=q["option_c"],
+                option_d=q["option_d"],
+                selected_answer=q["selected_answer"],
+                correct_answer=q["correct_answer"],
+                is_correct=q["is_correct"],
+                explanation=q["explanation"]
+            ) for q in report.get("questions_review", [])
+        ]
     )
 
 @router.get("/history", response_model=List[QuizHistoryItem])
@@ -461,7 +481,7 @@ async def explain_incorrect_answer(
 @router.get("/admin/quiz-analytics", response_model=AdminQuizAnalyticsResponse)
 def get_admin_quiz_analytics(
     db: Session = Depends(get_db),
-    current_user = Depends(require_hod_or_admin)
+    current_user = Depends(require_role("super_admin", "faculty"))
 ):
     # 1. Heatmap: Subject (rows) vs Units (columns) with avg accuracy
     results = db.query(

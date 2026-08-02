@@ -316,6 +316,14 @@ async def chat(
             Subject.code.ilike(body.subject) | Subject.name.ilike(f"%{body.subject}%")
         ).first()
 
+        if subject_obj:
+            # Enforce current semester matches subject's semester
+            if current_user.current_semester != subject_obj.semester_number:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied. This subject belongs to a different semester."
+                )
+
         if subject_obj and embedding_svc.is_available:
             # 5-second timeout on retrieval call
             search_result = await asyncio.wait_for(
@@ -377,7 +385,8 @@ async def chat(
     # 5. Extract and validate suggested topic
     suggested_topic = extract_suggested_topic(ai_response)
     if not suggested_topic:
-        suggested_topic = get_next_suggestion(body.subject, body.message)
+        suggested_topic = get_next_suggestion(body.subject, body.message, db=db)
+
 
     # 6. Calculate confidence score
     confidence_level = calculate_confidence(body.message, body.subject, ai_response)
@@ -843,7 +852,15 @@ def get_subjects(
     current_user: User = Depends(get_current_user)
 ):
     """Return the list of supported MCA subjects with database IDs and metadata."""
-    db_subjects = db.query(Subject).filter(Subject.is_archived == False).all()
+    from utils.semester_filter import apply_semester_filter
+    from models.note import Note
+    from models.content_chunks import ContentChunk
+
+    query = db.query(Subject).filter(Subject.is_archived == False)
+    if current_user.role == "student":
+        query = apply_semester_filter(query, Subject, current_user)
+    
+    db_subjects = query.all()
     
     # Map both code and name to static metadata
     subjects_map = {}
@@ -851,6 +868,29 @@ def get_subjects(
         subjects_map[s["code"].lower()] = s
         subjects_map[s["name"].lower()] = s
     
+    subject_ids = [s.id for s in db_subjects]
+    notes_counts = {}
+    chunks_counts = {}
+    if subject_ids:
+        # Standard notes count
+        notes_counts = {r[0]: r[1] for r in db.query(Note.subject_id, func.count(Note.id))
+                        .filter(Note.subject_id.in_(subject_ids)).group_by(Note.subject_id).all()}
+        
+        # Approved note summaries count (from UploadedNote and NoteSummary)
+        from models.uploaded_note import UploadedNote
+        from models.note_summary import NoteSummary
+        approved_summaries_counts = {r[0]: r[1] for r in db.query(UploadedNote.subject_id, func.count(NoteSummary.id))
+                                     .join(NoteSummary, NoteSummary.note_id == UploadedNote.id)
+                                     .filter(UploadedNote.subject_id.in_(subject_ids), NoteSummary.status == "APPROVED")
+                                     .group_by(UploadedNote.subject_id).all()}
+        
+        # Add standard notes and approved summaries together to match the Notes module
+        for sid in subject_ids:
+            notes_counts[sid] = notes_counts.get(sid, 0) + approved_summaries_counts.get(sid, 0)
+
+        chunks_counts = {r[0]: r[1] for r in db.query(ContentChunk.subject_id, func.count(ContentChunk.id))
+                         .filter(ContentChunk.subject_id.in_(subject_ids)).group_by(ContentChunk.subject_id).all()}
+
     result = []
     for sub in db_subjects:
         static_meta = subjects_map.get(sub.code.lower(), {})
@@ -863,7 +903,11 @@ def get_subjects(
             "name": sub.name,
             "color": sub.color or static_meta.get("color", "#3B82F6"),
             "icon": sub.icon or static_meta.get("icon", "BookOpen"),
-            "topics": static_meta.get("topics", [])
+            "topics": sub.get_topics(),
+            "notes_count": notes_counts.get(sub.id, 0),
+            "chunks_count": chunks_counts.get(sub.id, 0),
+            "topics_list": sub.get_topics()
+
         })
     return result
 
