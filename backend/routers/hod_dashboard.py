@@ -20,107 +20,68 @@ async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_hod_or_admin_async)
 ):
-    # Approved students
-    approved_students_stmt = select(func.count(User.id)).where(
-        User.role == "student", User.status == "approved"
-    )
-    approved_students_res = await db.execute(approved_students_stmt)
-    approved_students = approved_students_res.scalar() or 0
-
-    # Pending approvals
-    pending_stmt = select(func.count(StudentEnrollment.id)).where(
-        StudentEnrollment.approval_status == "pending"
-    )
-    pending_res = await db.execute(pending_stmt)
-    pending_approvals = pending_res.scalar() or 0
-
-    # Flagged AI answers pending
-    flagged_stmt = select(func.count(FlaggedAnswer.id)).where(
-        FlaggedAnswer.status == "pending"
-    )
-    flagged_res = await db.execute(flagged_stmt)
-    flagged_pending = flagged_res.scalar() or 0
-
-    # Leave requests pending
-    leaves_stmt = select(func.count(FacultyLeaveRequest.id)).where(
-        FacultyLeaveRequest.status == "pending"
-    )
-    leaves_res = await db.execute(leaves_stmt)
-    pending_leaves = leaves_res.scalar() or 0
-
-    # Subjects with no faculty assigned
-    sub_q = select(distinct(FacultySubjectAssignment.subject_id))
-    sub_res = await db.execute(sub_q)
-    assigned_ids = [r[0] for r in sub_res.all()]
-
-    unassigned_subjects_stmt = select(func.count(Subject.id)).where(
-        and_(Subject.is_archived == False, Subject.id.notin_(assigned_ids))
-    )
-    unassigned_subjects_res = await db.execute(unassigned_subjects_stmt)
-    unassigned_subjects = unassigned_subjects_res.scalar() or 0
-
-    # Today's classes count
     today_day = datetime.now().strftime("%A")
     VALID_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
-    todays_classes = 0
-    if today_day in VALID_DAYS:
-        today_classes_stmt = select(func.count(Timetable.id)).where(
-            Timetable.day_of_week == today_day
-        )
-        today_classes_res = await db.execute(today_classes_stmt)
-        todays_classes = today_classes_res.scalar() or 0
-
-    # 1. Quiz accuracy: quiz_stats query
-    quiz_stats_stmt = select(
-        func.count(QuizAnswer.id).label("total"),
-        func.sum(case((QuizAnswer.is_correct == True, 1), else_=0)).label("correct")
+    
+    # Pre-calculate assigned subject IDs subquery
+    assigned_sub_query = select(distinct(FacultySubjectAssignment.subject_id)).scalar_subquery()
+    
+    # Consolidate 10 count/aggregation queries into a single roundtrip select statement
+    stmt = select(
+        select(func.count(User.id)).where(User.role == "student", User.status == "approved").scalar_subquery(),
+        select(func.count(StudentEnrollment.id)).where(StudentEnrollment.approval_status == "pending").scalar_subquery(),
+        select(func.count(FlaggedAnswer.id)).where(FlaggedAnswer.status == "pending").scalar_subquery(),
+        select(func.count(FacultyLeaveRequest.id)).where(FacultyLeaveRequest.status == "pending").scalar_subquery(),
+        select(func.count(Subject.id)).where(and_(Subject.is_archived == False, Subject.id.notin_(assigned_sub_query))).scalar_subquery(),
+        select(func.count(Timetable.id)).where(Timetable.day_of_week == today_day).scalar_subquery() if today_day in VALID_DAYS else select(func.val(0)).scalar_subquery(),
+        select(func.count(QuizAnswer.id)).scalar_subquery(),
+        select(func.sum(case((QuizAnswer.is_correct == True, 1), else_=0))).scalar_subquery(),
+        select(func.count(User.id)).where(User.role == "student", User.is_active == True).scalar_subquery(),
+        select(func.count(DailyChallenge.id)).scalar_subquery(),
+        select(func.count(ChallengeSubmission.id)).scalar_subquery(),
+        select(func.count(Doubt.id)).scalar_subquery(),
+        select(func.count(Doubt.id)).where(Doubt.is_resolved == True).scalar_subquery(),
+        select(func.avg(QuizAttempt.score)).where(QuizAttempt.score.isnot(None)).scalar_subquery()
     )
-    quiz_stats_res = await db.execute(quiz_stats_stmt)
-    quiz_stats = quiz_stats_res.first()
+    
+    res = await db.execute(stmt)
+    row = res.fetchone()
+    
+    approved_students = row[0] or 0
+    pending_approvals = row[1] or 0
+    flagged_pending = row[2] or 0
+    pending_leaves = row[3] or 0
+    unassigned_subjects = row[4] or 0
+    todays_classes = row[5] or 0
+    
+    # Quiz stats
+    quiz_total = row[6] or 0
+    quiz_correct = row[7] or 0
     quiz_acc = 0.0
-    if quiz_stats and quiz_stats.total and quiz_stats.total > 0:
-        quiz_acc = (quiz_stats.correct / quiz_stats.total) * 100
-
-    # 2. Daily Challenge completion
-    total_students_stmt = select(func.count(User.id)).where(
-        User.role == "student", User.is_active == True
-    )
-    total_students_res = await db.execute(total_students_stmt)
-    total_students = total_students_res.scalar() or 0
-
-    total_challenges_stmt = select(func.count(DailyChallenge.id))
-    total_challenges_res = await db.execute(total_challenges_stmt)
-    total_challenges = total_challenges_res.scalar() or 0
-
-    challenge_submissions_stmt = select(func.count(ChallengeSubmission.id))
-    challenge_submissions_res = await db.execute(challenge_submissions_stmt)
-    challenge_submissions = challenge_submissions_res.scalar() or 0
-
+    if quiz_total > 0:
+        quiz_acc = (quiz_correct / quiz_total) * 100
+        
+    # Daily Challenge completion
+    total_students = row[8] or 0
+    total_challenges = row[9] or 0
+    challenge_submissions = row[10] or 0
     challenge_rate = 0.0
     if total_students > 0 and total_challenges > 0:
         max_possible_submissions = total_students * total_challenges
         challenge_rate = (challenge_submissions / max_possible_submissions) * 100
-
-    # 3. Resolved doubts percentage
-    total_doubts_stmt = select(func.count(Doubt.id))
-    total_doubts_res = await db.execute(total_doubts_stmt)
-    total_doubts = total_doubts_res.scalar() or 0
-
-    resolved_doubts_stmt = select(func.count(Doubt.id)).where(Doubt.is_resolved == True)
-    resolved_doubts_res = await db.execute(resolved_doubts_stmt)
-    resolved_doubts = resolved_doubts_res.scalar() or 0
-
+        
+    # Resolved doubts percentage
+    total_doubts = row[11] or 0
+    resolved_doubts = row[12] or 0
     resolved_rate = 0.0
     if total_doubts > 0:
         resolved_rate = (resolved_doubts / total_doubts) * 100
-
+        
     health_score = int(0.4 * quiz_acc + 0.3 * challenge_rate + 0.3 * resolved_rate)
     health_score = max(0, min(100, health_score))
+    
+    avg_score = row[13] or 0.0
 
-    # Average quiz attempt score
-    avg_score_stmt = select(func.avg(QuizAttempt.score)).where(QuizAttempt.score.isnot(None))
-    avg_score_res = await db.execute(avg_score_stmt)
-    avg_score = avg_score_res.scalar() or 0.0
 
     return {
         "approved_students": approved_students,

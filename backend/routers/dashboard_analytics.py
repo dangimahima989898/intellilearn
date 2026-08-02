@@ -30,19 +30,27 @@ def get_stats(db: Session = Depends(get_db), current_user: User = Depends(requir
     today_date = date.today()
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
     
-    total_students = db.query(User).filter(User.role == "student").count()
-    
-    active_today = db.query(func.count(distinct(StudentActivityLog.student_id)))\
-        .filter(func.cast(StudentActivityLog.timestamp, Date) == today_date).scalar() or 0
-        
     from models.note_summary import NoteSummary
-    pending_summaries = db.query(NoteSummary).filter(NoteSummary.status != "APPROVED").count()
+    from sqlalchemy import select
+
+    # Combine all 6 count queries into a single roundtrip select statement
+    stmt = select(
+        select(func.count(User.id)).filter(User.role == "student").scalar_subquery(),
+        select(func.count(distinct(StudentActivityLog.student_id))).filter(func.cast(StudentActivityLog.timestamp, Date) == today_date).scalar_subquery(),
+        select(func.count(NoteSummary.id)).filter(NoteSummary.status != "APPROVED").scalar_subquery(),
+        select(func.count(FlaggedAnswer.id)).filter(FlaggedAnswer.status == "pending").scalar_subquery(),
+        select(func.count(QuizAttempt.id)).filter(QuizAttempt.started_at >= seven_days_ago).scalar_subquery(),
+        select(func.count(Department.department_id)).filter(Department.status == "Active").scalar_subquery()
+    )
     
-    flagged_doubts = db.query(FlaggedAnswer).filter(FlaggedAnswer.status == "pending").count()
+    result = db.execute(stmt).fetchone()
     
-    weekly_attempts = db.query(QuizAttempt).filter(QuizAttempt.started_at >= seven_days_ago).count()
-    
-    total_departments = db.query(Department).filter(Department.status == "Active").count()
+    total_students = result[0] or 0
+    active_today = result[1] or 0
+    pending_summaries = result[2] or 0
+    flagged_doubts = result[3] or 0
+    weekly_attempts = result[4] or 0
+    total_departments = result[5] or 0
     
     # Calculate uptime log dynamically
     now = datetime.utcnow()
@@ -68,6 +76,7 @@ def get_stats(db: Session = Depends(get_db), current_user: User = Depends(requir
         "total_departments": total_departments,
         "uptime_log": uptime_str
     }
+
 
 @router.get("/heatmap")
 def get_heatmap(
