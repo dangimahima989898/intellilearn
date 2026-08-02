@@ -28,16 +28,24 @@ def update_student_streak(db: Session = Depends(get_db), current_user = Depends(
 
 @router.get("/student/overview")
 def get_student_overview(db: Session = Depends(get_db), current_user = Depends(require_student)):
-    # 1. Total quizzes
-    total_quizzes = db.query(func.count(QuizAttempt.id)).filter(QuizAttempt.student_id == current_user.id).scalar() or 0
+    from sqlalchemy import select
+
+    # Combine 5 counts/sums into a single roundtrip select statement
+    stmt = select(
+        select(func.count(QuizAttempt.id)).filter(QuizAttempt.student_id == current_user.id).scalar_subquery(),
+        select(func.avg(QuizAttempt.score)).filter(QuizAttempt.student_id == current_user.id, QuizAttempt.completed_at.isnot(None)).scalar_subquery(),
+        select(func.max(QuizAttempt.score)).filter(QuizAttempt.student_id == current_user.id, QuizAttempt.completed_at.isnot(None)).scalar_subquery(),
+        select(func.count(ChallengeSubmission.id)).filter(ChallengeSubmission.student_id == current_user.id).scalar_subquery(),
+        select(func.sum(ChallengeSubmission.score_earned)).filter(ChallengeSubmission.student_id == current_user.id).scalar_subquery()
+    )
     
-    # 2. Average score & Best Score
-    avg_score = db.query(func.avg(QuizAttempt.score)).filter(QuizAttempt.student_id == current_user.id, QuizAttempt.completed_at.isnot(None)).scalar() or 0
-    best_score = db.query(func.max(QuizAttempt.score)).filter(QuizAttempt.student_id == current_user.id, QuizAttempt.completed_at.isnot(None)).scalar() or 0
+    result = db.execute(stmt).fetchone()
     
-    # 3. Challenges
-    total_challenges = db.query(func.count(ChallengeSubmission.id)).filter(ChallengeSubmission.student_id == current_user.id).scalar() or 0
-    challenge_score = db.query(func.sum(ChallengeSubmission.score_earned)).filter(ChallengeSubmission.student_id == current_user.id).scalar() or 0
+    total_quizzes = result[0] or 0
+    avg_score = result[1] or 0
+    best_score = result[2] or 0
+    total_challenges = result[3] or 0
+    challenge_score = result[4] or 0
     
     # 4. Subjects studied breakdown – filtered to student's current semester only
     subjects_studied_query = db.query(
@@ -74,6 +82,7 @@ def get_student_overview(db: Session = Depends(get_db), current_user = Depends(r
         "challenge_score": challenge_score,
         "subjects_studied": subjects_studied
     }
+
 
 @router.get("/student/score-history")
 def get_student_score_history(db: Session = Depends(get_db), current_user = Depends(require_student)):
@@ -134,15 +143,32 @@ def get_leaderboard(db: Session = Depends(get_db), current_user = Depends(get_cu
 
 @router.get("/admin/stats")
 def get_admin_stats(db: Session = Depends(get_db), current_user = Depends(require_admin)):
-    total_students = db.query(func.count(User.id)).filter(User.role == "student").scalar() or 0
-    total_admins = db.query(func.count(User.id)).filter(User.role == "admin").scalar() or 0
-    total_notes = db.query(func.count(Note.id)).scalar() or 0
-    total_questions = db.query(func.count(Question.id)).scalar() or 0
-    total_quiz_attempts = db.query(func.count(QuizAttempt.id)).scalar() or 0
-    total_doubts = db.query(func.count(Doubt.id)).scalar() or 0
-    total_doubts_resolved = db.query(func.count(Doubt.id)).filter(Doubt.is_resolved == True).scalar() or 0
-    total_chat_messages = db.query(func.count(ChatLog.id)).scalar() or 0
-    total_challenges = db.query(func.count(ChallengeSubmission.id)).scalar() or 0
+    from sqlalchemy import select
+
+    # Combine all 9 count queries into a single roundtrip select statement
+    stmt = select(
+        select(func.count(User.id)).filter(User.role == "student").scalar_subquery(),
+        select(func.count(User.id)).filter(User.role == "admin").scalar_subquery(),
+        select(func.count(Note.id)).scalar_subquery(),
+        select(func.count(Question.id)).scalar_subquery(),
+        select(func.count(QuizAttempt.id)).scalar_subquery(),
+        select(func.count(Doubt.id)).scalar_subquery(),
+        select(func.count(Doubt.id)).filter(Doubt.is_resolved == True).scalar_subquery(),
+        select(func.count(ChatLog.id)).scalar_subquery(),
+        select(func.count(ChallengeSubmission.id)).scalar_subquery()
+    )
+    
+    result = db.execute(stmt).fetchone()
+    
+    total_students = result[0] or 0
+    total_admins = result[1] or 0
+    total_notes = result[2] or 0
+    total_questions = result[3] or 0
+    total_quiz_attempts = result[4] or 0
+    total_doubts = result[5] or 0
+    total_doubts_resolved = result[6] or 0
+    total_chat_messages = result[7] or 0
+    total_challenges = result[8] or 0
     
     # Consolidated queries to avoid N+1 loop overhead
     notes_counts = dict(db.query(Note.subject_id, func.count(Note.id)).group_by(Note.subject_id).all())
@@ -171,6 +197,7 @@ def get_admin_stats(db: Session = Depends(get_db), current_user = Depends(requir
         "total_challenge_submissions": total_challenges,
         "subjects": subjects_data
     }
+
 
 @router.get("/faculty/analytics")
 def get_faculty_analytics(
